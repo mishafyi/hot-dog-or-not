@@ -1,0 +1,51 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Environment
+.env
+.env.local
+
+# Build
+.next/
+out/
+dist/
+build/
+
+# Dataset
+backend/data/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude
+CLAUDE.md
+
+# Video project (Remotion, used for generating hero GIF)
+video/
+
+# Archive (old development files)
+_archive/
+
+# Stray root folders (frontend has its own)
+components/
+lib/
+
+# Large media files
+*.mov
+*.mp4
+
+# Results (keep structure, ignore data)
+backend/results/*.jsonl
+backend/results/*.json
+!backend/results/.gitkeep
