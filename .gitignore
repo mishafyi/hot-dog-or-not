@@ -45,6 +45,11 @@ lib/
 *.mov
 *.mp4
 
+# Personal/draft content
+docs/twitter-post.md
+README.private.md
+DEPLOY-*.md
+
 # Results (keep structure, ignore data)
 backend/results/*.jsonl
 backend/results/*.json
