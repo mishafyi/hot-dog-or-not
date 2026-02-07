@@ -8,6 +8,7 @@ const links = [
   { href: "/run", label: "Run Benchmark" },
   { href: "/results", label: "Results" },
   { href: "/gallery", label: "Gallery" },
+  { href: "/battle", label: "Battle" },
   { href: "/about", label: "About" },
 ];
 

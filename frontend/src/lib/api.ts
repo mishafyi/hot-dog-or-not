@@ -1,6 +1,7 @@
 import type {
   DatasetStatus,
   ModelInfo,
+  AvailableModel,
   LeaderboardEntry,
   ModelDetail,
   Prediction,
@@ -8,6 +9,8 @@ import type {
   RunStatusResponse,
   RunMeta,
   BatchRunResponse,
+  BattleRound,
+  BattleStats,
 } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -54,6 +57,8 @@ export const api = {
   },
 
   getModels: () => fetchJson<ModelInfo[]>("/api/models"),
+
+  getAvailableModels: () => fetchJson<AvailableModel[]>("/api/available-models"),
 
   getLeaderboard: () =>
     fetchJson<LeaderboardEntry[]>("/api/results/leaderboard"),
@@ -142,4 +147,12 @@ export const api = {
 
   imageUrl: (split: string, category: string, filename: string) =>
     `${API_URL}/api/dataset/images/${split}/${category}/${filename}`,
+
+  getBattleFeed: (last = 0) =>
+    fetchJson<BattleRound[]>(`/api/battle/feed?last=${last}`),
+
+  getBattleStats: () => fetchJson<BattleStats>("/api/battle/stats"),
+
+  battleImageUrl: (filename: string) =>
+    `${API_URL}/api/battle/images/${filename}`,
 };

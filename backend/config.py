@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     max_tokens: int | None = None
     temperature: float = 0.0
+    battle_token: str = ""
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
@@ -28,10 +29,10 @@ MODELS = [
         "params": "27B",
     },
     {
-        "id": "allenai/molmo-2-8b:free",
-        "name": "AllenAI Molmo 2 8B",
-        "provider": "AllenAI",
-        "params": "8B",
+        "id": "google/gemma-3-4b-it:free",
+        "name": "Google Gemma 3 4B",
+        "provider": "Google",
+        "params": "4B",
     },
     {
         "id": "google/gemma-3-12b-it:free",

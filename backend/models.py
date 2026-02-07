@@ -145,3 +145,16 @@ class BatchRunRequest(BaseModel):
 class BatchRunResponse(BaseModel):
     batch_id: str
     run_ids: dict[str, str]  # model_id → run_id
+
+
+class BattleRound(BaseModel):
+    round_id: str
+    timestamp: str  # ISO 8601
+    image_filename: str
+    nemotron_answer: str  # yes/no/error
+    nemotron_reasoning: str
+    nemotron_latency_ms: float
+    claw_answer: str  # yes/no/error
+    claw_reasoning: str
+    consensus: str  # yes/no/disagree
+    winner: str  # nemotron/openclaw/tie

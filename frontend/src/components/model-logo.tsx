@@ -5,6 +5,7 @@ const LOGOS: Record<string, string> = {
   nvidia: "/logos/NVIDIA.webp",
   google: "/logos/gemma3.png",
   allenai: "/logos/molmo_logo.png",
+  mistralai: "/logos/mistral.svg",
 };
 
 function getLogoPath(modelId: string): string | null {

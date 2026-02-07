@@ -6,11 +6,24 @@ import { StatusButton } from "@/components/status-button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  SelectGroup,
+  SelectLabel,
+  SelectSeparator,
+} from "@/components/ui/select";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { ModelLogo } from "@/components/model-logo";
-import type { ModelInfo, DatasetStatus } from "@/lib/types";
+import type { ModelInfo, AvailableModel, DatasetStatus } from "@/lib/types";
+
+const SLOT_COUNT = 4;
+const NONE_VALUE = "__none__";
 
 interface RunControlsProps {
   onBatchStarted: (runIds: Record<string, string>, batchId: string) => void;
@@ -18,8 +31,11 @@ interface RunControlsProps {
 }
 
 export function RunControls({ onBatchStarted, batchRunning = false }: RunControlsProps) {
-  const [models, setModels] = useState<ModelInfo[]>([]);
-  const [selectedModelIds, setSelectedModelIds] = useState<Set<string>>(new Set());
+  const [defaultModels, setDefaultModels] = useState<ModelInfo[]>([]);
+  const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
+  const [loadingModels, setLoadingModels] = useState(true);
+  // 4 slots: each holds a model ID or null
+  const [slots, setSlots] = useState<(string | null)[]>(Array(SLOT_COUNT).fill(null));
   const [dataset, setDataset] = useState<DatasetStatus | null>(null);
   const [sampleSize, setSampleSize] = useState<number>(5);
   const [apiKey, setApiKey] = useState<string>("");
@@ -27,10 +43,22 @@ export function RunControls({ onBatchStarted, batchRunning = false }: RunControl
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Load default models and pre-select them
     api.getModels().then((m) => {
-      setModels(m);
-      setSelectedModelIds(new Set(m.map((model) => model.id)));
+      setDefaultModels(m);
+      setSlots(m.slice(0, SLOT_COUNT).map((model) => model.id).concat(
+        Array(Math.max(0, SLOT_COUNT - m.length)).fill(null)
+      ));
     }).catch(console.error);
+
+    // Load available models from OpenRouter
+    api.getAvailableModels()
+      .then(setAvailableModels)
+      .catch((err) => {
+        console.error("Failed to load available models:", err);
+      })
+      .finally(() => setLoadingModels(false));
+
     api.getDatasetStatus().then(setDataset).catch(console.error);
   }, []);
 
@@ -38,27 +66,27 @@ export function RunControls({ onBatchStarted, batchRunning = false }: RunControl
     ? Math.min(dataset.hot_dog_count, dataset.not_hot_dog_count)
     : 23;
 
-  const toggleModel = (id: string) => {
-    setSelectedModelIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        if (next.size > 1) next.delete(id); // Keep at least 1
-      } else {
-        next.add(id);
-      }
+  const activeModelIds = slots.filter((s): s is string => s !== null);
+  const activeCount = activeModelIds.length;
+
+  const setSlotModel = (index: number, modelId: string | null) => {
+    setSlots((prev) => {
+      const next = [...prev];
+      next[index] = modelId;
       return next;
     });
   };
+
+  // Build unified option list: defaults first, then others
+  const defaultIds = new Set(defaultModels.map((m) => m.id));
+  const otherModels = availableModels.filter((m) => !defaultIds.has(m.id));
 
   const handleStart = async () => {
     setBtnStatus("loading");
     setError(null);
     try {
       const size = sampleSize > 0 && sampleSize < maxImages ? sampleSize : undefined;
-      const modelIds = selectedModelIds.size < models.length
-        ? Array.from(selectedModelIds)
-        : undefined;
-      const result = await api.startBatchRun(size, apiKey || undefined, modelIds);
+      const result = await api.startBatchRun(size, apiKey || undefined, activeModelIds);
       setBtnStatus("success");
       toast.success("Benchmark started");
       onBatchStarted(result.run_ids, result.batch_id);
@@ -89,58 +117,40 @@ export function RunControls({ onBatchStarted, batchRunning = false }: RunControl
           </div>
         )}
 
-        {/* Models section — toggleable */}
+        {/* Models section — dropdowns */}
         <div className="px-6 py-4 border-b space-y-3">
           <div className="flex items-center justify-between">
             <div>
-              <Label htmlFor="models-section">Models</Label>
-              <p className="text-[11px] text-muted-foreground/70 mt-0.5">Free vision models from OpenRouter — tap to toggle</p>
+              <Label>Models</Label>
+              <p className="text-[11px] text-muted-foreground/70 mt-0.5">
+                Free vision models from OpenRouter — pick up to {SLOT_COUNT}
+              </p>
             </div>
             <span className="text-xs text-muted-foreground">
-              {selectedModelIds.size}/{models.length} selected
+              {activeCount} active
             </span>
           </div>
-          <div className="flex flex-wrap gap-3">
-            {models.map((m) => {
-              const selected = selectedModelIds.has(m.id);
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {slots.map((selectedId, index) => {
+              // Models selected in OTHER slots (to filter from this dropdown)
+              const otherSelected = new Set(
+                slots.filter((s, i): s is string => s !== null && i !== index)
+              );
+
               return (
-                <button
-                  key={m.id}
-                  onClick={() => toggleModel(m.id)}
-                  className={cn(
-                    "inline-flex items-center gap-3 rounded-xl px-4 py-2.5 text-xs font-medium transition-colors cursor-pointer border",
-                    selected
-                      ? "bg-green-500/15 border-green-500/40 text-green-400"
-                      : "bg-muted/50 border-transparent text-muted-foreground hover:bg-muted"
-                  )}
-                >
-                  <ModelLogo modelId={m.id} size={36} />
-                  <div className="flex flex-col items-start leading-tight">
-                    <span className={cn(
-                      "text-xs font-medium",
-                      selected ? "text-green-400/70" : "text-muted-foreground/70"
-                    )}>
-                      {m.provider}
-                    </span>
-                    <span className="font-semibold text-sm">
-                      {m.name.replace(m.provider + " ", "").replace(" " + m.params, "")}
-                    </span>
-                  </div>
-                  <span className={cn(
-                    "text-xs font-mono font-medium tabular-nums px-2 py-0.5 rounded-md",
-                    selected ? "bg-green-500/10 text-green-400" : "bg-muted text-muted-foreground"
-                  )}>
-                    {m.params}
-                  </span>
-                </button>
+                <ModelSlotDropdown
+                  key={index}
+                  index={index}
+                  selectedId={selectedId}
+                  defaultModels={defaultModels}
+                  otherModels={otherModels}
+                  otherSelected={otherSelected}
+                  loading={loadingModels}
+                  onChange={(id) => setSlotModel(index, id)}
+                />
               );
             })}
-            {models.length === 0 && (
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <div className="size-3 rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground animate-spin" />
-                Loading models…
-              </div>
-            )}
           </div>
         </div>
 
@@ -197,13 +207,109 @@ export function RunControls({ onBatchStarted, batchRunning = false }: RunControl
           <StatusButton
             status={batchRunning ? "success" : btnStatus}
             onClick={handleStart}
-            disabled={!dataset?.downloaded || selectedModelIds.size === 0 || batchRunning}
-            idleText={`Run ${selectedModelIds.size} Model${selectedModelIds.size !== 1 ? "s" : ""}`}
+            disabled={!dataset?.downloaded || activeCount === 0 || batchRunning}
+            idleText={`Run ${activeCount} Model${activeCount !== 1 ? "s" : ""}`}
             loadingText="Starting"
             successText="Benchmark Running"
           />
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function ModelSlotDropdown({
+  index,
+  selectedId,
+  defaultModels,
+  otherModels,
+  otherSelected,
+  loading,
+  onChange,
+}: {
+  index: number;
+  selectedId: string | null;
+  defaultModels: ModelInfo[];
+  otherModels: AvailableModel[];
+  otherSelected: Set<string>;
+  loading: boolean;
+  onChange: (id: string | null) => void;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <div className="shrink-0 w-5 flex justify-center">
+        {selectedId ? (
+          <ModelLogo modelId={selectedId} size={20} />
+        ) : (
+          <span className="text-xs text-muted-foreground/40 font-mono">{index + 1}</span>
+        )}
+      </div>
+      <Select
+        value={selectedId ?? NONE_VALUE}
+        onValueChange={(v) => onChange(v === NONE_VALUE ? null : v)}
+      >
+        <SelectTrigger
+          className={cn(
+            "w-full text-xs",
+            selectedId
+              ? "border-green-500/40 bg-green-500/10"
+              : "border-muted-foreground/20 bg-muted/50"
+          )}
+        >
+          <SelectValue placeholder="Select a model…" />
+        </SelectTrigger>
+        <SelectContent position="popper" className="max-h-[300px]">
+          <SelectItem value={NONE_VALUE}>
+            <span className="text-muted-foreground">— None —</span>
+          </SelectItem>
+          <SelectSeparator />
+
+          {/* Default / recommended models */}
+          <SelectGroup>
+            <SelectLabel>Default</SelectLabel>
+            {defaultModels.map((m) => (
+              <SelectItem
+                key={m.id}
+                value={m.id}
+                disabled={otherSelected.has(m.id)}
+              >
+                <span className="truncate">{m.name}</span>
+                <span className="ml-1 text-muted-foreground font-mono text-[10px]">{m.params}</span>
+              </SelectItem>
+            ))}
+          </SelectGroup>
+
+          {/* Other OpenRouter free vision models */}
+          {otherModels.length > 0 && (
+            <>
+              <SelectSeparator />
+              <SelectGroup>
+                <SelectLabel>
+                  {loading ? "Loading…" : "OpenRouter Free Vision"}
+                </SelectLabel>
+                {otherModels.map((m) => (
+                  <SelectItem
+                    key={m.id}
+                    value={m.id}
+                    disabled={otherSelected.has(m.id)}
+                  >
+                    <span className="truncate">{m.name}</span>
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </>
+          )}
+
+          {loading && otherModels.length === 0 && (
+            <>
+              <SelectSeparator />
+              <SelectGroup>
+                <SelectLabel>Loading more models…</SelectLabel>
+              </SelectGroup>
+            </>
+          )}
+        </SelectContent>
+      </Select>
+    </div>
   );
 }

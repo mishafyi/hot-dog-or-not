@@ -1,0 +1,181 @@
+from __future__ import annotations
+
+import json
+import os
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+
+from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile
+from fastapi.responses import FileResponse
+
+from config import settings
+from models import BattleRound
+from services.openrouter_client import OpenRouterClient
+from services.rate_limiter import global_rate_limiter
+from services.response_parser import parse_response
+
+router = APIRouter(prefix="/api/battle", tags=["battle"])
+
+NEMOTRON_MODEL = "nvidia/nemotron-nano-12b-v2-vl:free"
+BATTLE_FILE = Path(settings.results_dir) / "battle.jsonl"
+BATTLE_IMAGES_DIR = Path(settings.results_dir) / "battle_images"
+
+
+def _verify_token(authorization: str | None) -> None:
+    if not settings.battle_token:
+        raise HTTPException(500, "BATTLE_TOKEN not configured")
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(401, "Missing Bearer token")
+    token = authorization.removeprefix("Bearer ").strip()
+    if token != settings.battle_token:
+        raise HTTPException(403, "Invalid token")
+
+
+def _load_rounds() -> list[BattleRound]:
+    if not BATTLE_FILE.exists():
+        return []
+    rounds: list[BattleRound] = []
+    for line in BATTLE_FILE.read_text().splitlines():
+        line = line.strip()
+        if line:
+            rounds.append(BattleRound(**json.loads(line)))
+    return rounds
+
+
+def _determine_winner(
+    nem_answer: str, claw_answer: str
+) -> tuple[str, str]:
+    """Return (consensus, winner).
+
+    If both agree, consensus is that answer and it's a tie.
+    If they disagree, consensus is 'disagree' and there's no clear winner
+    until ground truth is known — we mark it 'disagree' for now.
+    """
+    if nem_answer == claw_answer:
+        return nem_answer, "tie"
+    return "disagree", "disagree"
+
+
+@router.post("/round")
+async def submit_round(
+    image: UploadFile = File(...),
+    claw_answer: str = Form(...),
+    claw_reasoning: str = Form(""),
+    authorization: str | None = Header(None),
+):
+    _verify_token(authorization)
+
+    if claw_answer not in ("yes", "no", "error"):
+        raise HTTPException(400, "claw_answer must be yes, no, or error")
+
+    round_id = uuid.uuid4().hex[:8]
+
+    # Save uploaded image
+    BATTLE_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+    ext = Path(image.filename or "img.jpg").suffix or ".jpg"
+    image_filename = f"{round_id}{ext}"
+    image_path = BATTLE_IMAGES_DIR / image_filename
+    content = await image.read()
+    image_path.write_bytes(content)
+
+    # Classify with Nemotron
+    client = OpenRouterClient()
+    try:
+        await global_rate_limiter.acquire()
+        raw_response, reasoning, latency_ms = await client.classify_image(
+            NEMOTRON_MODEL, str(image_path)
+        )
+        nemotron_answer = parse_response(raw_response)
+        nemotron_reasoning = reasoning or raw_response
+    except Exception as exc:
+        nemotron_answer = "error"
+        nemotron_reasoning = str(exc)
+        latency_ms = 0.0
+    finally:
+        await client.close()
+
+    consensus, winner = _determine_winner(nemotron_answer, claw_answer)
+
+    battle_round = BattleRound(
+        round_id=round_id,
+        timestamp=datetime.now(timezone.utc).isoformat(),
+        image_filename=image_filename,
+        nemotron_answer=nemotron_answer,
+        nemotron_reasoning=nemotron_reasoning,
+        nemotron_latency_ms=latency_ms,
+        claw_answer=claw_answer,
+        claw_reasoning=claw_reasoning,
+        consensus=consensus,
+        winner=winner,
+    )
+
+    # Append to JSONL
+    BATTLE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with open(BATTLE_FILE, "a") as f:
+        f.write(battle_round.model_dump_json() + "\n")
+
+    return {
+        "round_id": round_id,
+        "nemotron": {
+            "answer": nemotron_answer,
+            "reasoning": nemotron_reasoning,
+            "latency_ms": latency_ms,
+        },
+        "openclaw": {
+            "answer": claw_answer,
+            "reasoning": claw_reasoning,
+        },
+        "consensus": consensus,
+        "winner": winner,
+        "image_url": f"/api/battle/images/{image_filename}",
+    }
+
+
+@router.get("/feed")
+async def get_feed(last: int = 0):
+    rounds = _load_rounds()
+    return rounds[last:]
+
+
+@router.get("/stats")
+async def get_stats():
+    rounds = _load_rounds()
+    total = len(rounds)
+    nemotron_wins = 0
+    openclaw_wins = 0
+    ties = 0
+    nemotron_agree = 0
+    openclaw_agree = 0
+
+    for r in rounds:
+        if r.winner == "tie":
+            ties += 1
+            nemotron_agree += 1
+            openclaw_agree += 1
+        elif r.winner == "nemotron":
+            nemotron_wins += 1
+            nemotron_agree += 1
+        elif r.winner == "openclaw":
+            openclaw_wins += 1
+            openclaw_agree += 1
+        # 'disagree' — neither gets a point
+
+    return {
+        "nemotron_wins": nemotron_wins,
+        "openclaw_wins": openclaw_wins,
+        "ties": ties,
+        "total_rounds": total,
+        "nemotron_accuracy": nemotron_agree / total if total else 0,
+        "openclaw_accuracy": openclaw_agree / total if total else 0,
+    }
+
+
+@router.get("/images/{filename}")
+async def get_image(filename: str):
+    # Prevent path traversal
+    safe = Path(filename).name
+    path = BATTLE_IMAGES_DIR / safe
+    if not path.exists():
+        raise HTTPException(404, "Image not found")
+    return FileResponse(path)

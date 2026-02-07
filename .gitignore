@@ -53,4 +53,5 @@ DEPLOY-*.md
 # Results (keep structure, ignore data)
 backend/results/*.jsonl
 backend/results/*.json
+backend/results/battle_images/
 !backend/results/.gitkeep

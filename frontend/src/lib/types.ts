@@ -5,6 +5,13 @@ export interface ModelInfo {
   params: string;
 }
 
+export interface AvailableModel {
+  id: string;
+  name: string;
+  provider: string;
+  context_length: number;
+}
+
 export interface DatasetStatus {
   downloaded: boolean;
   hot_dog_count: number;
@@ -123,4 +130,41 @@ export interface ImagePrediction {
 export interface BatchRunResponse {
   batch_id: string;
   run_ids: Record<string, string>; // model_id → run_id
+}
+
+export interface ModelPredictionSlot {
+  modelId: string;
+  modelName: string;
+  prediction: Prediction | null;
+}
+
+export interface ImageSlot {
+  split: string;
+  category: string;
+  filename: string;
+  imageKey: string;
+  models: ModelPredictionSlot[];
+  allModelsComplete: boolean;
+}
+
+export interface BattleRound {
+  round_id: string;
+  timestamp: string;
+  image_filename: string;
+  nemotron_answer: string;
+  nemotron_reasoning: string;
+  nemotron_latency_ms: number;
+  claw_answer: string;
+  claw_reasoning: string;
+  consensus: string;
+  winner: string;
+}
+
+export interface BattleStats {
+  nemotron_wins: number;
+  openclaw_wins: number;
+  ties: number;
+  total_rounds: number;
+  nemotron_accuracy: number;
+  openclaw_accuracy: number;
 }

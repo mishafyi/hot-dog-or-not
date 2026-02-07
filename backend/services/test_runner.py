@@ -26,7 +26,12 @@ def get_model_info(model_id: str) -> dict | None:
     for m in MODELS:
         if m["id"] == model_id:
             return m
-    return None
+    # Accept any model ID — infer name/provider from ID
+    base = model_id.removesuffix(":free")
+    parts = base.split("/", 1)
+    provider = parts[0].replace("ai", "AI").title() if parts[0] else "Unknown"
+    name = parts[1].replace("-", " ").title() if len(parts) > 1 else model_id
+    return {"id": model_id, "name": name, "provider": provider, "params": ""}
 
 
 def get_run(run_id: str) -> RunMeta | None:
@@ -176,12 +181,17 @@ async def start_batch_run(
     # Generate images ONCE for all models
     images = list_all_images(sample_size)
 
-    # Filter models if model_ids provided
-    selected = MODELS
+    # Resolve models: use provided IDs or fall back to defaults
     if model_ids:
-        selected = [m for m in MODELS if m["id"] in model_ids]
+        selected = []
+        for mid in model_ids:
+            info = get_model_info(mid)
+            if info:
+                selected.append(info)
         if not selected:
             raise ValueError("No valid models selected")
+    else:
+        selected = MODELS
 
     run_ids: dict[str, str] = {}
     for model in selected:

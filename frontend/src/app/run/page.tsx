@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import Link from "next/link";
 import { RunControls } from "@/components/run-controls";
-import { RunLiveFeed } from "@/components/run-live-feed";
+import { UnifiedBenchmarkFeed } from "@/components/unified-benchmark-feed";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
@@ -251,17 +251,11 @@ export default function RunPage() {
               </Button>
             </div>
           )}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {Object.entries(batchRunIds).map(([modelId, runId]) => (
-              <RunLiveFeed
-                key={runId}
-                runId={runId}
-                isActive={!batchComplete}
-                compact
-                modelName={modelNameMap.get(modelId) || modelId}
-              />
-            ))}
-          </div>
+          <UnifiedBenchmarkFeed
+            batchRunIds={batchRunIds}
+            modelNames={modelNameMap}
+            isActive={!batchComplete}
+          />
           {batchComplete && (
             <div className="flex justify-center">
               <Link
