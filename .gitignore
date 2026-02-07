@@ -38,8 +38,8 @@ video/
 _archive/
 
 # Stray root folders (frontend has its own)
-components/
-lib/
+/components/
+/lib/
 
 # Large media files
 *.mov
