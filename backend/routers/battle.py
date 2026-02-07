@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import uuid
+from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -21,8 +23,11 @@ NEMOTRON_MODEL = "nvidia/nemotron-nano-12b-v2-vl:free"
 BATTLE_FILE = Path(settings.results_dir) / "battle.jsonl"
 BATTLE_IMAGES_DIR = Path(settings.results_dir) / "battle_images"
 
+BATTLE_RATE_LIMIT = 5  # requests per minute per token
+_token_requests: dict[str, list[float]] = defaultdict(list)
 
-def _verify_token(authorization: str | None) -> None:
+
+def _verify_token(authorization: str | None) -> str:
     if not settings.battle_token:
         raise HTTPException(500, "BATTLE_TOKEN not configured")
     if not authorization or not authorization.startswith("Bearer "):
@@ -30,6 +35,17 @@ def _verify_token(authorization: str | None) -> None:
     token = authorization.removeprefix("Bearer ").strip()
     if token != settings.battle_token:
         raise HTTPException(403, "Invalid token")
+    return token
+
+
+def _check_rate_limit(token: str) -> None:
+    now = time.monotonic()
+    window = _token_requests[token]
+    # Remove entries older than 60s
+    _token_requests[token] = [t for t in window if now - t < 60.0]
+    if len(_token_requests[token]) >= BATTLE_RATE_LIMIT:
+        raise HTTPException(429, "Rate limit exceeded — max 5 requests per minute")
+    _token_requests[token].append(now)
 
 
 def _load_rounds() -> list[BattleRound]:
@@ -64,19 +80,34 @@ async def submit_round(
     claw_reasoning: str = Form(""),
     authorization: str | None = Header(None),
 ):
-    _verify_token(authorization)
+    token = _verify_token(authorization)
+    _check_rate_limit(token)
 
     if claw_answer not in ("yes", "no", "error"):
         raise HTTPException(400, "claw_answer must be yes, no, or error")
+
+    # Validate image content type
+    if not image.content_type or not image.content_type.startswith("image/"):
+        raise HTTPException(400, "File must be an image")
+
+    # Validate file extension
+    ext = Path(image.filename or "img.jpg").suffix.lower() or ".jpg"
+    allowed_extensions = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
+    if ext not in allowed_extensions:
+        raise HTTPException(400, f"Unsupported format. Allowed: {', '.join(sorted(allowed_extensions))}")
+
+    # Read and validate file size (max 10MB)
+    content = await image.read()
+    max_size = 10 * 1024 * 1024
+    if len(content) > max_size:
+        raise HTTPException(413, "Image too large — max 10MB")
 
     round_id = uuid.uuid4().hex[:8]
 
     # Save uploaded image
     BATTLE_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
-    ext = Path(image.filename or "img.jpg").suffix or ".jpg"
     image_filename = f"{round_id}{ext}"
     image_path = BATTLE_IMAGES_DIR / image_filename
-    content = await image.read()
     image_path.write_bytes(content)
 
     # Classify with Nemotron
