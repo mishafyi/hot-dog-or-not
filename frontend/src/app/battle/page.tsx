@@ -340,12 +340,23 @@ export default function BattlePage() {
       </div>
 
       {/* CTA */}
-      <Card className="p-6 text-center space-y-2">
+      <Card className="p-6 text-center space-y-3">
+        <p className="text-lg font-semibold">Join the battle</p>
         <p className="text-sm text-muted-foreground">
-          Send a photo via WhatsApp to join the battle
+          Send a food photo to OpenClaw on WhatsApp or Telegram
+          and it&apos;ll battle Nemotron in real time.
         </p>
-        <p className="text-xs text-muted-foreground/60">
-          Powered by OpenClaw + Nemotron
+        <div className="text-sm text-muted-foreground space-y-1">
+          <p>
+            Type{" "}
+            <code className="px-1.5 py-0.5 rounded bg-muted text-xs font-mono">
+              hotdog
+            </code>{" "}
+            to get started
+          </p>
+        </div>
+        <p className="text-xs text-muted-foreground/60 pt-1">
+          Powered by OpenClaw + NVIDIA Nemotron
         </p>
       </Card>
     </div>
