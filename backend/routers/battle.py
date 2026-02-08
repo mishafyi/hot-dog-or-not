@@ -8,10 +8,13 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
+import httpx
 from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 from config import settings
+
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 from models import BattleRound, BattleVote
 from services.openrouter_client import OpenRouterClient
 from services.rate_limiter import global_rate_limiter
@@ -109,6 +112,7 @@ async def submit_round(
     source: str = Form(""),
     claw_latency_ms: float = Form(0.0),
     claw_model: str = Form(""),
+    telegram_chat_id: str = Form(""),
     authorization: str | None = Header(None),
 ):
     token = _verify_token(authorization)
@@ -179,6 +183,26 @@ async def submit_round(
     BATTLE_FILE.parent.mkdir(parents=True, exist_ok=True)
     with open(BATTLE_FILE, "a") as f:
         f.write(battle_round.model_dump_json() + "\n")
+
+    # Send Telegram poll if chat_id provided
+    if telegram_chat_id and TELEGRAM_BOT_TOKEN:
+        try:
+            async with httpx.AsyncClient() as http:
+                await http.post(
+                    f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPoll",
+                    json={
+                        "chat_id": int(telegram_chat_id),
+                        "question": "Which response do you agree with more?",
+                        "options": [
+                            {"text": "Response 1 is more accurate"},
+                            {"text": "Response 2 is more accurate"},
+                            {"text": "Both are equally good"},
+                        ],
+                        "is_anonymous": False,
+                    },
+                )
+        except Exception:
+            pass  # poll is best-effort
 
     return {
         "round_id": round_id,
