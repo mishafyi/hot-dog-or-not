@@ -11,6 +11,9 @@ import type {
   BatchRunResponse,
   BattleRound,
   BattleStats,
+  VoteSession,
+  VoteReveal,
+  ArenaLeaderboard,
 } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -155,4 +158,13 @@ export const api = {
 
   battleImageUrl: (filename: string) =>
     `${API_URL}/api/battle/images/${filename}`,
+
+  getNextVote: (voterId: string) =>
+    fetchJson<VoteSession>(`/api/battle/vote/next?voter_id=${encodeURIComponent(voterId)}`),
+
+  submitVote: (sessionId: string, votedFor: string) =>
+    postJson<VoteReveal>(`/api/battle/vote/${sessionId}`, { voted_for: votedFor }),
+
+  getArenaLeaderboard: () =>
+    fetchJson<ArenaLeaderboard>("/api/battle/leaderboard"),
 };

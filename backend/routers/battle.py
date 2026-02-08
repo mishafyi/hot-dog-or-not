@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import random
 import time
 import uuid
 from collections import defaultdict
@@ -12,7 +13,7 @@ from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 from config import settings
-from models import BattleRound
+from models import BattleRound, BattleVote
 from services.openrouter_client import OpenRouterClient
 from services.rate_limiter import global_rate_limiter
 from services.response_parser import parse_response
@@ -23,8 +24,39 @@ NEMOTRON_MODEL = "nvidia/nemotron-nano-12b-v2-vl:free"
 BATTLE_FILE = Path(settings.results_dir) / "battle.jsonl"
 BATTLE_IMAGES_DIR = Path(settings.results_dir) / "battle_images"
 
+VOTES_FILE = Path(settings.results_dir) / "votes.jsonl"
+
 BATTLE_RATE_LIMIT = 5  # requests per minute per token
 _token_requests: dict[str, list[float]] = defaultdict(list)
+
+# In-memory vote sessions: session_id -> {round_id, model_a, model_b, model_a_side, voter_id}
+_vote_sessions: dict[str, dict] = {}
+
+# Model display names
+MODEL_DISPLAY_NAMES: dict[str, str] = {
+    "nvidia/nemotron-nano-12b-v2-vl:free": "Nemotron 12B",
+    "google/gemini-2.5-flash": "Gemini 2.5 Flash",
+    "google/gemini-2.5-flash-preview": "Gemini 2.5 Flash",
+}
+
+
+def _model_display(model_id: str) -> str:
+    if model_id in MODEL_DISPLAY_NAMES:
+        return MODEL_DISPLAY_NAMES[model_id]
+    # Strip provider prefix and :free suffix
+    name = model_id.split("/")[-1].removesuffix(":free")
+    return name.replace("-", " ").title()
+
+
+def _load_votes() -> list[BattleVote]:
+    if not VOTES_FILE.exists():
+        return []
+    votes: list[BattleVote] = []
+    for line in VOTES_FILE.read_text().splitlines():
+        line = line.strip()
+        if line:
+            votes.append(BattleVote(**json.loads(line)))
+    return votes
 
 
 def _verify_token(authorization: str | None) -> str:
@@ -80,6 +112,7 @@ async def submit_round(
     claw_reasoning: str = Form(""),
     source: str = Form(""),
     claw_latency_ms: float = Form(0.0),
+    claw_model: str = Form(""),
     authorization: str | None = Header(None),
 ):
     token = _verify_token(authorization)
@@ -143,6 +176,7 @@ async def submit_round(
         winner=winner,
         source=source or None,
         claw_latency_ms=claw_latency_ms if claw_latency_ms > 0 else None,
+        claw_model=claw_model or None,
     )
 
     # Append to JSONL
@@ -216,3 +250,226 @@ async def get_image(filename: str):
     if not path.exists():
         raise HTTPException(404, "Image not found")
     return FileResponse(path)
+
+
+# ── Voting endpoints ──────────────────────────────────────────
+
+
+@router.get("/vote/next")
+async def get_next_vote(voter_id: str = ""):
+    if not voter_id:
+        raise HTTPException(400, "voter_id required")
+
+    rounds = _load_rounds()
+    if not rounds:
+        raise HTTPException(404, "No rounds available")
+
+    votes = _load_votes()
+    voted_round_ids = {v.round_id for v in votes if v.voter_id == voter_id}
+
+    # Filter to rounds this voter hasn't voted on yet
+    eligible = [r for r in rounds if r.round_id not in voted_round_ids]
+    if not eligible:
+        raise HTTPException(404, "No more rounds to vote on")
+
+    round_ = random.choice(eligible)
+
+    # Determine actual model names
+    nemotron_model = NEMOTRON_MODEL
+    claw_model = round_.claw_model or "unknown"
+
+    # Randomize which side is A vs B
+    if random.random() < 0.5:
+        model_a_side = "nemotron"
+        model_a = nemotron_model
+        model_a_answer = round_.nemotron_answer
+        model_a_reasoning = round_.nemotron_reasoning
+        model_b_side = "openclaw"
+        model_b = claw_model
+        model_b_answer = round_.claw_answer
+        model_b_reasoning = round_.claw_reasoning
+    else:
+        model_a_side = "openclaw"
+        model_a = claw_model
+        model_a_answer = round_.claw_answer
+        model_a_reasoning = round_.claw_reasoning
+        model_b_side = "nemotron"
+        model_b = nemotron_model
+        model_b_answer = round_.nemotron_answer
+        model_b_reasoning = round_.nemotron_reasoning
+
+    session_id = uuid.uuid4().hex[:12]
+    _vote_sessions[session_id] = {
+        "round_id": round_.round_id,
+        "model_a": model_a,
+        "model_b": model_b,
+        "model_a_side": model_a_side,
+        "voter_id": voter_id,
+    }
+
+    return {
+        "vote_session_id": session_id,
+        "round_id": round_.round_id,
+        "image_url": f"/api/battle/images/{round_.image_filename}",
+        "model_a_answer": model_a_answer,
+        "model_a_reasoning": model_a_reasoning,
+        "model_b_answer": model_b_answer,
+        "model_b_reasoning": model_b_reasoning,
+    }
+
+
+@router.post("/vote/{vote_session_id}")
+async def submit_vote(vote_session_id: str, body: dict):
+    session = _vote_sessions.pop(vote_session_id, None)
+    if not session:
+        raise HTTPException(404, "Vote session not found or already used")
+
+    voted_for = body.get("voted_for", "")
+    if voted_for not in ("model_a", "model_b", "tie"):
+        raise HTTPException(400, "voted_for must be model_a, model_b, or tie")
+
+    vote = BattleVote(
+        vote_id=uuid.uuid4().hex[:8],
+        round_id=session["round_id"],
+        voter_id=session["voter_id"],
+        voted_for=voted_for,
+        model_a=session["model_a"],
+        model_b=session["model_b"],
+        model_a_side=session["model_a_side"],
+        timestamp=datetime.now(timezone.utc).isoformat(),
+    )
+
+    VOTES_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with open(VOTES_FILE, "a") as f:
+        f.write(vote.model_dump_json() + "\n")
+
+    # Reveal which model was which
+    return {
+        "model_a": session["model_a"],
+        "model_a_display": _model_display(session["model_a"]),
+        "model_a_side": session["model_a_side"],
+        "model_b": session["model_b"],
+        "model_b_display": _model_display(session["model_b"]),
+        "model_b_side": "openclaw" if session["model_a_side"] == "nemotron" else "nemotron",
+        "voted_for": voted_for,
+    }
+
+
+@router.get("/vote/stats")
+async def get_vote_stats():
+    votes = _load_votes()
+    total = len(votes)
+
+    # Count wins per model
+    model_wins: dict[str, int] = defaultdict(int)
+    model_votes: dict[str, int] = defaultdict(int)
+
+    for v in votes:
+        model_votes[v.model_a] = model_votes.get(v.model_a, 0) + 1
+        model_votes[v.model_b] = model_votes.get(v.model_b, 0) + 1
+        if v.voted_for == "model_a":
+            model_wins[v.model_a] = model_wins.get(v.model_a, 0) + 1
+        elif v.voted_for == "model_b":
+            model_wins[v.model_b] = model_wins.get(v.model_b, 0) + 1
+
+    return {
+        "total_votes": total,
+        "model_wins": dict(model_wins),
+        "model_votes": dict(model_votes),
+    }
+
+
+@router.get("/leaderboard")
+async def get_leaderboard():
+    votes = _load_votes()
+    total = len(votes)
+    min_votes = 20
+
+    if total < min_votes:
+        return {
+            "models": [],
+            "total_votes": total,
+            "min_votes_needed": min_votes,
+        }
+
+    # Build matchup data for Bradley-Terry
+    # The winner column uses "model_a"/"model_b"/"tie" convention expected by arena-rank
+    rows = []
+    for v in votes:
+        rows.append({
+            "model_a": v.model_a,
+            "model_b": v.model_b,
+            "winner": v.voted_for,  # already "model_a", "model_b", or "tie"
+        })
+
+    vote_counts: dict[str, int] = defaultdict(int)
+    for v in votes:
+        vote_counts[v.model_a] += 1
+        vote_counts[v.model_b] += 1
+
+    try:
+        import pandas as pd
+        from arena_rank.models.bradley_terry import BradleyTerry
+        from arena_rank.utils.data_utils import PairDataset
+
+        df = pd.DataFrame(rows)
+        dataset = PairDataset.from_pandas(df)
+        n = dataset.n_competitors
+
+        bt = BradleyTerry(n_competitors=n)
+        result = bt.compute_ratings_and_cis(dataset)
+
+        models = []
+        for i, comp in enumerate(result["competitors"]):
+            rating = float(result["ratings"][i])
+            ci_lo = float(result["rating_lower"][i])
+            ci_hi = float(result["rating_upper"][i])
+            models.append({
+                "model": comp,
+                "display": _model_display(comp),
+                "rating": round(rating),
+                "ci": [round(ci_lo), round(ci_hi)],
+                "votes": vote_counts.get(comp, 0),
+            })
+
+        models.sort(key=lambda m: m["rating"], reverse=True)
+
+        return {
+            "models": models,
+            "total_votes": total,
+            "min_votes_needed": min_votes,
+        }
+    except Exception:
+        # Fallback: basic win-rate ranking if arena-rank fails
+        model_wins: dict[str, int] = defaultdict(int)
+        model_total: dict[str, int] = defaultdict(int)
+
+        for v in votes:
+            model_total[v.model_a] += 1
+            model_total[v.model_b] += 1
+            if v.voted_for == "model_a":
+                model_wins[v.model_a] += 1
+            elif v.voted_for == "model_b":
+                model_wins[v.model_b] += 1
+
+        models = []
+        for model_id in model_total:
+            wins = model_wins.get(model_id, 0)
+            total_m = model_total[model_id]
+            win_rate = wins / total_m if total_m > 0 else 0.5
+            rating = round(1500 + (win_rate - 0.5) * 400)
+            models.append({
+                "model": model_id,
+                "display": _model_display(model_id),
+                "rating": rating,
+                "ci": [rating - 50, rating + 50],
+                "votes": total_m,
+            })
+
+        models.sort(key=lambda m: m["rating"], reverse=True)
+
+        return {
+            "models": models,
+            "total_votes": total,
+            "min_votes_needed": min_votes,
+        }

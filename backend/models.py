@@ -160,3 +160,15 @@ class BattleRound(BaseModel):
     winner: str  # nemotron/openclaw/tie
     source: str | None = None  # e.g. "@HotDogNotHotDog_Bot", "skill:hotdog"
     claw_latency_ms: float | None = None  # OpenClaw inference time
+    claw_model: str | None = None  # model used by OpenClaw agent
+
+
+class BattleVote(BaseModel):
+    vote_id: str
+    round_id: str
+    voter_id: str  # anonymous cookie-based ID
+    voted_for: str  # "model_a" | "model_b" | "tie"
+    model_a: str  # actual model name (e.g. "nvidia/nemotron-nano-12b-v2-vl:free")
+    model_b: str  # actual model name (e.g. "google/gemini-2.5-flash")
+    model_a_side: str  # "nemotron" or "openclaw" — which side was randomized to A
+    timestamp: str
