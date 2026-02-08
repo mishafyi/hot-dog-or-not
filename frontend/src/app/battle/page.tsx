@@ -2,10 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, ChevronRight, Clock, Copy, Check, ExternalLink, SkipForward, Trophy, Vote, Zap } from "lucide-react";
+import { ChevronDown, Clock, Copy, Check, ExternalLink, Trophy, Zap } from "lucide-react";
 import Image from "next/image";
 import { api } from "@/lib/api";
-import type { BattleRound, BattleStats, VoteSession, VoteReveal, ArenaLeaderboard } from "@/lib/types";
+import type { BattleRound, BattleStats, ArenaLeaderboard } from "@/lib/types";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -473,241 +473,6 @@ function InstallCTA() {
   );
 }
 
-/* ── Voter ID ──────────────────────────────────────────────── */
-
-function getVoterId(): string {
-  const key = "hotdog_voter_id";
-  let id = typeof window !== "undefined" ? localStorage.getItem(key) : null;
-  if (!id) {
-    id = crypto.randomUUID().slice(0, 12);
-    if (typeof window !== "undefined") localStorage.setItem(key, id);
-  }
-  return id;
-}
-
-/* ── Voting booth ──────────────────────────────────────────── */
-
-function VotingBooth({ onVoted }: { onVoted: () => void }) {
-  const [session, setSession] = useState<VoteSession | null>(null);
-  const [reveal, setReveal] = useState<VoteReveal | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [voting, setVoting] = useState(false);
-  const [exhausted, setExhausted] = useState(false);
-
-  const fetchNext = useCallback(async () => {
-    setLoading(true);
-    setReveal(null);
-    setSession(null);
-    try {
-      const s = await api.getNextVote(getVoterId());
-      setSession(s);
-      setExhausted(false);
-    } catch {
-      setExhausted(true);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchNext();
-  }, [fetchNext]);
-
-  async function handleVote(choice: "model_a" | "model_b" | "tie") {
-    if (!session || voting) return;
-    setVoting(true);
-    try {
-      const r = await api.submitVote(session.vote_session_id, choice);
-      setReveal(r);
-      onVoted();
-    } catch {
-      // ignore
-    } finally {
-      setVoting(false);
-    }
-  }
-
-  if (exhausted) {
-    return (
-      <Card className="p-8 text-center">
-        <div className="space-y-2">
-          <Vote className="size-8 mx-auto text-muted-foreground/40" />
-          <p className="text-sm font-medium text-muted-foreground">
-            You&apos;ve voted on all available rounds!
-          </p>
-          <p className="text-xs text-muted-foreground/60">
-            New rounds appear when users send photos via the skill.
-          </p>
-        </div>
-      </Card>
-    );
-  }
-
-  if (loading || !session) {
-    return (
-      <Card className="overflow-hidden !py-0 !gap-0">
-        <div className="p-6 space-y-4">
-          <Skeleton className="h-6 w-64 mx-auto" />
-          <Skeleton className="h-32 w-full rounded-lg" />
-          <div className="grid grid-cols-2 gap-3">
-            <Skeleton className="h-24 rounded-lg" />
-            <Skeleton className="h-24 rounded-lg" />
-          </div>
-          <div className="flex justify-center gap-2">
-            <Skeleton className="h-9 w-28 rounded-lg" />
-            <Skeleton className="h-9 w-20 rounded-lg" />
-            <Skeleton className="h-9 w-28 rounded-lg" />
-          </div>
-        </div>
-      </Card>
-    );
-  }
-
-  const answerBadge = (answer: string) => {
-    const isYes = answer === "yes";
-    const colors = isYes
-      ? "bg-green-500/10 text-green-400 border-green-500/20"
-      : answer === "no"
-      ? "bg-red-500/10 text-red-400 border-red-500/20"
-      : "bg-yellow-500/10 text-yellow-400 border-yellow-500/20";
-    return (
-      <span className={`inline-flex px-2 py-0.5 rounded-md border text-xs font-bold uppercase ${colors}`}>
-        {answer === "yes" ? "Hot dog" : answer === "no" ? "Not hot dog" : "Error"}
-      </span>
-    );
-  };
-
-  return (
-    <Card className="overflow-hidden !py-0 !gap-0">
-      {/* Header */}
-      <div className="px-5 pt-5 pb-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Vote className="size-4 text-purple-400" />
-          <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">
-            Blind vote
-          </h3>
-        </div>
-        <button
-          onClick={fetchNext}
-          className="text-xs text-muted-foreground/50 hover:text-muted-foreground flex items-center gap-1 transition-colors"
-        >
-          <SkipForward className="size-3" /> Skip
-        </button>
-      </div>
-
-      {/* Image */}
-      <div className="px-5">
-        <div className="relative w-full h-36 bg-black/30 rounded-lg overflow-hidden">
-          <img
-            src={`${API_URL}${session.image_url}`}
-            alt="Battle round"
-            className="absolute inset-0 w-full h-full object-contain"
-          />
-        </div>
-      </div>
-
-      {/* Model responses side by side */}
-      <div className="px-5 pt-4 grid grid-cols-2 gap-3">
-        {/* Model A */}
-        <div className={`rounded-lg border p-3 transition-colors ${
-          reveal
-            ? reveal.model_a_side === "nemotron"
-              ? "border-emerald-500/30 bg-emerald-500/5"
-              : "border-orange-500/30 bg-orange-500/5"
-            : "border-purple-500/20 bg-purple-500/5"
-        }`}>
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-              {reveal ? reveal.model_a_display : "Model A"}
-            </span>
-            {answerBadge(session.model_a_answer)}
-          </div>
-          <p className="text-xs text-muted-foreground leading-relaxed line-clamp-4">
-            {session.model_a_reasoning}
-          </p>
-        </div>
-
-        {/* Model B */}
-        <div className={`rounded-lg border p-3 transition-colors ${
-          reveal
-            ? reveal.model_b_side === "nemotron"
-              ? "border-emerald-500/30 bg-emerald-500/5"
-              : "border-orange-500/30 bg-orange-500/5"
-            : "border-purple-500/20 bg-purple-500/5"
-        }`}>
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-              {reveal ? reveal.model_b_display : "Model B"}
-            </span>
-            {answerBadge(session.model_b_answer)}
-          </div>
-          <p className="text-xs text-muted-foreground leading-relaxed line-clamp-4">
-            {session.model_b_reasoning}
-          </p>
-        </div>
-      </div>
-
-      {/* Vote buttons or reveal */}
-      <div className="px-5 py-4">
-        {!reveal ? (
-          <div className="flex justify-center gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => handleVote("model_a")}
-              disabled={voting}
-              className="border-purple-500/30 hover:bg-purple-500/10 hover:text-purple-300"
-            >
-              <ChevronRight className="size-3 rotate-180" /> A is better
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => handleVote("tie")}
-              disabled={voting}
-              className="border-muted-foreground/20 hover:bg-muted/30"
-            >
-              Tie
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => handleVote("model_b")}
-              disabled={voting}
-              className="border-purple-500/30 hover:bg-purple-500/10 hover:text-purple-300"
-            >
-              B is better <ChevronRight className="size-3" />
-            </Button>
-          </div>
-        ) : (
-          <motion.div
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="space-y-3"
-          >
-            <div className="text-center text-sm text-muted-foreground">
-              <span className="font-semibold text-foreground">Model A</span> was{" "}
-              <span className={reveal.model_a_side === "nemotron" ? "text-emerald-400" : "text-orange-400"}>
-                {reveal.model_a_display}
-              </span>
-              {" "}&middot;{" "}
-              <span className="font-semibold text-foreground">Model B</span> was{" "}
-              <span className={reveal.model_b_side === "nemotron" ? "text-emerald-400" : "text-orange-400"}>
-                {reveal.model_b_display}
-              </span>
-            </div>
-            <div className="flex justify-center">
-              <Button size="sm" variant="ghost" onClick={fetchNext} className="text-purple-400 hover:text-purple-300">
-                Next round <ChevronRight className="size-3" />
-              </Button>
-            </div>
-          </motion.div>
-        )}
-      </div>
-    </Card>
-  );
-}
-
 /* ── Arena leaderboard ─────────────────────────────────────── */
 
 function ArenaLeaderboardSection() {
@@ -852,8 +617,6 @@ export default function BattlePage() {
 
   const sortedRounds = [...rounds].reverse();
 
-  const [leaderboardKey, setLeaderboardKey] = useState(0);
-
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       {/* Header */}
@@ -877,11 +640,8 @@ export default function BattlePage() {
         </div>
       </div>
 
-      {/* Voting booth */}
-      <VotingBooth onVoted={() => setLeaderboardKey((k) => k + 1)} />
-
       {/* Arena leaderboard */}
-      <ArenaLeaderboardSection key={leaderboardKey} />
+      <ArenaLeaderboardSection />
 
       {/* Feed header */}
       <div className="flex items-center gap-2">

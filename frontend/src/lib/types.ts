@@ -163,26 +163,6 @@ export interface BattleRound {
   claw_model?: string | null;
 }
 
-export interface VoteSession {
-  vote_session_id: string;
-  round_id: string;
-  image_url: string;
-  model_a_answer: string;
-  model_a_reasoning: string;
-  model_b_answer: string;
-  model_b_reasoning: string;
-}
-
-export interface VoteReveal {
-  model_a: string;
-  model_a_display: string;
-  model_a_side: string;
-  model_b: string;
-  model_b_display: string;
-  model_b_side: string;
-  voted_for: string;
-}
-
 export interface ArenaModel {
   model: string;
   display: string;

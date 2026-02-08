@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-import random
 import time
 import uuid
 from collections import defaultdict
@@ -28,9 +27,6 @@ VOTES_FILE = Path(settings.results_dir) / "votes.jsonl"
 
 BATTLE_RATE_LIMIT = 5  # requests per minute per token
 _token_requests: dict[str, list[float]] = defaultdict(list)
-
-# In-memory vote sessions: session_id -> {round_id, model_a, model_b, model_a_side, voter_id}
-_vote_sessions: dict[str, dict] = {}
 
 # Model display names
 MODEL_DISPLAY_NAMES: dict[str, str] = {
@@ -255,87 +251,53 @@ async def get_image(filename: str):
 # ── Voting endpoints ──────────────────────────────────────────
 
 
-@router.get("/vote/next")
-async def get_next_vote(voter_id: str = ""):
-    if not voter_id:
-        raise HTTPException(400, "voter_id required")
+@router.post("/vote/submit")
+async def submit_vote(
+    round_id: str = Form(...),
+    voter_id: str = Form(...),
+    voted_for: str = Form(...),  # "first", "second", or "tie"
+    first_side: str = Form(...),  # "nemotron" or "openclaw" — which side was shown first
+):
+    """Simple vote endpoint for Telegram skill. The skill randomizes presentation
+    order and passes which side was shown as 'first'."""
+    if voted_for not in ("first", "second", "tie"):
+        raise HTTPException(400, "voted_for must be first, second, or tie")
+    if first_side not in ("nemotron", "openclaw"):
+        raise HTTPException(400, "first_side must be nemotron or openclaw")
 
+    # Look up the round to get actual model names
     rounds = _load_rounds()
-    if not rounds:
-        raise HTTPException(404, "No rounds available")
+    round_ = next((r for r in rounds if r.round_id == round_id), None)
+    if not round_:
+        raise HTTPException(404, "Round not found")
 
-    votes = _load_votes()
-    voted_round_ids = {v.round_id for v in votes if v.voter_id == voter_id}
-
-    # Filter to rounds this voter hasn't voted on yet
-    eligible = [r for r in rounds if r.round_id not in voted_round_ids]
-    if not eligible:
-        raise HTTPException(404, "No more rounds to vote on")
-
-    round_ = random.choice(eligible)
-
-    # Determine actual model names
     nemotron_model = NEMOTRON_MODEL
     claw_model = round_.claw_model or "unknown"
 
-    # Randomize which side is A vs B
-    if random.random() < 0.5:
+    # Map first/second to model_a/model_b based on first_side
+    if first_side == "nemotron":
+        model_a, model_b = nemotron_model, claw_model
         model_a_side = "nemotron"
-        model_a = nemotron_model
-        model_a_answer = round_.nemotron_answer
-        model_a_reasoning = round_.nemotron_reasoning
-        model_b_side = "openclaw"
-        model_b = claw_model
-        model_b_answer = round_.claw_answer
-        model_b_reasoning = round_.claw_reasoning
     else:
+        model_a, model_b = claw_model, nemotron_model
         model_a_side = "openclaw"
-        model_a = claw_model
-        model_a_answer = round_.claw_answer
-        model_a_reasoning = round_.claw_reasoning
-        model_b_side = "nemotron"
-        model_b = nemotron_model
-        model_b_answer = round_.nemotron_answer
-        model_b_reasoning = round_.nemotron_reasoning
 
-    session_id = uuid.uuid4().hex[:12]
-    _vote_sessions[session_id] = {
-        "round_id": round_.round_id,
-        "model_a": model_a,
-        "model_b": model_b,
-        "model_a_side": model_a_side,
-        "voter_id": voter_id,
-    }
-
-    return {
-        "vote_session_id": session_id,
-        "round_id": round_.round_id,
-        "image_url": f"/api/battle/images/{round_.image_filename}",
-        "model_a_answer": model_a_answer,
-        "model_a_reasoning": model_a_reasoning,
-        "model_b_answer": model_b_answer,
-        "model_b_reasoning": model_b_reasoning,
-    }
-
-
-@router.post("/vote/{vote_session_id}")
-async def submit_vote(vote_session_id: str, body: dict):
-    session = _vote_sessions.pop(vote_session_id, None)
-    if not session:
-        raise HTTPException(404, "Vote session not found or already used")
-
-    voted_for = body.get("voted_for", "")
-    if voted_for not in ("model_a", "model_b", "tie"):
-        raise HTTPException(400, "voted_for must be model_a, model_b, or tie")
+    # Map voted_for from first/second to model_a/model_b
+    if voted_for == "first":
+        canonical_vote = "model_a"
+    elif voted_for == "second":
+        canonical_vote = "model_b"
+    else:
+        canonical_vote = "tie"
 
     vote = BattleVote(
         vote_id=uuid.uuid4().hex[:8],
-        round_id=session["round_id"],
-        voter_id=session["voter_id"],
-        voted_for=voted_for,
-        model_a=session["model_a"],
-        model_b=session["model_b"],
-        model_a_side=session["model_a_side"],
+        round_id=round_id,
+        voter_id=voter_id,
+        voted_for=canonical_vote,
+        model_a=model_a,
+        model_b=model_b,
+        model_a_side=model_a_side,
         timestamp=datetime.now(timezone.utc).isoformat(),
     )
 
@@ -343,39 +305,10 @@ async def submit_vote(vote_session_id: str, body: dict):
     with open(VOTES_FILE, "a") as f:
         f.write(vote.model_dump_json() + "\n")
 
-    # Reveal which model was which
     return {
-        "model_a": session["model_a"],
-        "model_a_display": _model_display(session["model_a"]),
-        "model_a_side": session["model_a_side"],
-        "model_b": session["model_b"],
-        "model_b_display": _model_display(session["model_b"]),
-        "model_b_side": "openclaw" if session["model_a_side"] == "nemotron" else "nemotron",
-        "voted_for": voted_for,
-    }
-
-
-@router.get("/vote/stats")
-async def get_vote_stats():
-    votes = _load_votes()
-    total = len(votes)
-
-    # Count wins per model
-    model_wins: dict[str, int] = defaultdict(int)
-    model_votes: dict[str, int] = defaultdict(int)
-
-    for v in votes:
-        model_votes[v.model_a] = model_votes.get(v.model_a, 0) + 1
-        model_votes[v.model_b] = model_votes.get(v.model_b, 0) + 1
-        if v.voted_for == "model_a":
-            model_wins[v.model_a] = model_wins.get(v.model_a, 0) + 1
-        elif v.voted_for == "model_b":
-            model_wins[v.model_b] = model_wins.get(v.model_b, 0) + 1
-
-    return {
-        "total_votes": total,
-        "model_wins": dict(model_wins),
-        "model_votes": dict(model_votes),
+        "status": "ok",
+        "first_model": _model_display(model_a),
+        "second_model": _model_display(model_b),
     }
 
 
