@@ -284,11 +284,11 @@ function RoundCard({ round, index }: { round: BattleRound; index: number }) {
     >
       <Card className="overflow-hidden hover:border-border/80 transition-colors !py-0 !gap-0">
         {/* Image banner */}
-        <div className="relative w-full h-40">
+        <div className="relative w-full h-40 bg-black/30">
           <img
             src={`${API_URL}/api/battle/images/${round.image_filename}`}
             alt={`Round ${index + 1}`}
-            className="absolute inset-0 w-full h-full object-cover"
+            className="absolute inset-0 w-full h-full object-contain"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-card via-card/40 to-transparent" />
           <div className="absolute top-2.5 left-3">
