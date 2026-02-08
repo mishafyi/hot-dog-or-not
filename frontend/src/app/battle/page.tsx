@@ -299,7 +299,7 @@ function RoundCard({ round, index }: { round: BattleRound; index: number }) {
           <div className="absolute top-2.5 right-3 flex items-center gap-1.5">
             {round.source && (
               <span className="text-[10px] font-medium bg-orange-500/30 backdrop-blur-sm text-orange-200 px-1.5 py-0.5 rounded">
-                via {round.source}
+                {round.source}
               </span>
             )}
             <span className="text-[10px] font-medium bg-black/50 backdrop-blur-sm text-white/70 px-1.5 py-0.5 rounded">
