@@ -284,11 +284,11 @@ function RoundCard({ round, index }: { round: BattleRound; index: number }) {
     >
       <Card className="overflow-hidden hover:border-border/80 transition-colors !py-0 !gap-0">
         {/* Image banner */}
-        <div className="relative w-full h-40 bg-black/30">
+        <div className="relative w-full h-28 bg-black/30">
           <img
             src={`${API_URL}/api/battle/images/${round.image_filename}`}
             alt={`Round ${index + 1}`}
-            className="absolute inset-0 w-full h-full object-contain"
+            className="absolute inset-0 w-full h-full object-contain object-left"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-card via-card/40 to-transparent" />
           <div className="absolute top-2.5 left-3">
@@ -323,26 +323,16 @@ function RoundCard({ round, index }: { round: BattleRound; index: number }) {
         <div className="px-4 py-3 flex items-center justify-center gap-3">
           <OutcomeBadge winner={round.winner} consensus={round.consensus} />
           {round.nemotron_latency_ms > 0 && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="inline-flex items-center gap-1 text-[11px] text-emerald-400/50 font-mono tabular-nums">
-                  <Clock className="size-3" />
-                  {(round.nemotron_latency_ms / 1000).toFixed(1)}s
-                </span>
-              </TooltipTrigger>
-              <TooltipContent>Nemotron inference latency</TooltipContent>
-            </Tooltip>
+            <span className="inline-flex items-center gap-1 text-[11px] text-emerald-400/50 font-mono tabular-nums">
+              <Clock className="size-3" />
+              Nemotron {(round.nemotron_latency_ms / 1000).toFixed(1)}s
+            </span>
           )}
           {round.claw_latency_ms && round.claw_latency_ms > 0 && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="inline-flex items-center gap-1 text-[11px] text-orange-400/50 font-mono tabular-nums">
-                  <Clock className="size-3" />
-                  {(round.claw_latency_ms / 1000).toFixed(1)}s
-                </span>
-              </TooltipTrigger>
-              <TooltipContent>OpenClaw inference latency</TooltipContent>
-            </Tooltip>
+            <span className="inline-flex items-center gap-1 text-[11px] text-orange-400/50 font-mono tabular-nums">
+              <Clock className="size-3" />
+              OpenClaw {(round.claw_latency_ms / 1000).toFixed(1)}s
+            </span>
           )}
         </div>
 
