@@ -8,13 +8,18 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
+import hashlib
+import hmac
+import secrets
+
 import httpx
-from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, File, Form, Header, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse
 
 from config import settings
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+VOTE_SIGNING_KEY = os.getenv("VOTE_SIGNING_KEY", secrets.token_hex(32))
 from models import BattleRound, BattleVote
 from services.openrouter_client import OpenRouterClient
 from services.rate_limiter import global_rate_limiter
@@ -45,6 +50,11 @@ def _model_display(model_id: str) -> str:
     # Strip provider prefix and :free suffix
     name = model_id.split("/")[-1].removesuffix(":free")
     return name.replace("-", " ").title()
+
+
+def _sign_vote(round_id: str, voter_id: str, voted_for: str, first_side: str) -> str:
+    msg = f"{round_id}:{voter_id}:{voted_for}:{first_side}"
+    return hmac.new(VOTE_SIGNING_KEY.encode(), msg.encode(), hashlib.sha256).hexdigest()[:16]
 
 
 def _load_votes() -> list[BattleVote]:
@@ -184,25 +194,32 @@ async def submit_round(
     with open(BATTLE_FILE, "a") as f:
         f.write(battle_round.model_dump_json() + "\n")
 
-    # Send Telegram poll if chat_id provided
+    # Randomly assign sides for blind voting
+    import random
+    first_side = random.choice(["nemotron", "openclaw"])
+
+    # Send Telegram vote buttons if chat_id provided
     if telegram_chat_id and TELEGRAM_BOT_TOKEN:
         try:
+            base = "https://api.hotdogornot.xyz/api/battle/vote/telegram"
+            buttons = []
+            for label, vote in [("Response 1", "first"), ("Response 2", "second"), ("Tie", "tie")]:
+                sig = _sign_vote(round_id, telegram_chat_id, vote, first_side)
+                url = f"{base}?round_id={round_id}&voter_id={telegram_chat_id}&voted_for={vote}&first_side={first_side}&sig={sig}"
+                buttons.append({"text": label, "url": url})
             async with httpx.AsyncClient() as http:
                 await http.post(
-                    f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPoll",
+                    f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
                     json={
                         "chat_id": int(telegram_chat_id),
-                        "question": "Which response do you agree with more?",
-                        "options": [
-                            {"text": "Response 1 is more accurate"},
-                            {"text": "Response 2 is more accurate"},
-                            {"text": "Both are equally good"},
-                        ],
-                        "is_anonymous": False,
+                        "text": "🗳️ Which response do you agree with more?",
+                        "reply_markup": {
+                            "inline_keyboard": [buttons],
+                        },
                     },
                 )
         except Exception:
-            pass  # poll is best-effort
+            pass  # vote buttons are best-effort
 
     return {
         "round_id": round_id,
@@ -220,6 +237,7 @@ async def submit_round(
         "source": battle_round.source,
         "winner": winner,
         "image_url": f"/api/battle/images/{image_filename}",
+        "first_side": first_side,
     }
 
 
@@ -334,6 +352,100 @@ async def submit_vote(
         "first_model": _model_display(model_a),
         "second_model": _model_display(model_b),
     }
+
+
+@router.get("/vote/telegram")
+async def vote_telegram(
+    round_id: str = Query(...),
+    voter_id: str = Query(...),
+    voted_for: str = Query(...),
+    first_side: str = Query(...),
+    sig: str = Query(...),
+):
+    """Handle vote from Telegram inline button. Records vote and shows confirmation."""
+    expected_sig = _sign_vote(round_id, voter_id, voted_for, first_side)
+    if not hmac.compare_digest(sig, expected_sig):
+        return HTMLResponse("<h1>Invalid vote link</h1>", status_code=403)
+
+    if voted_for not in ("first", "second", "tie"):
+        return HTMLResponse("<h1>Invalid vote</h1>", status_code=400)
+    if first_side not in ("nemotron", "openclaw"):
+        return HTMLResponse("<h1>Invalid vote</h1>", status_code=400)
+
+    rounds = _load_rounds()
+    round_ = next((r for r in rounds if r.round_id == round_id), None)
+    if not round_:
+        return HTMLResponse("<h1>Round not found</h1>", status_code=404)
+
+    # Check for duplicate vote
+    votes = _load_votes()
+    already_voted = any(v.round_id == round_id and v.voter_id == voter_id for v in votes)
+    if already_voted:
+        return HTMLResponse(
+            "<html><body style='font-family:system-ui;text-align:center;padding:60px'>"
+            "<h1>Already voted!</h1>"
+            "<p>You already voted on this round.</p>"
+            "<a href='https://hotdogornot.xyz/battle'>View rankings</a>"
+            "</body></html>"
+        )
+
+    nemotron_model = NEMOTRON_MODEL
+    claw_model = round_.claw_model or "unknown"
+
+    if first_side == "nemotron":
+        model_a, model_b = nemotron_model, claw_model
+        model_a_side = "nemotron"
+    else:
+        model_a, model_b = claw_model, nemotron_model
+        model_a_side = "openclaw"
+
+    if voted_for == "first":
+        canonical_vote = "model_a"
+    elif voted_for == "second":
+        canonical_vote = "model_b"
+    else:
+        canonical_vote = "tie"
+
+    vote = BattleVote(
+        vote_id=uuid.uuid4().hex[:8],
+        round_id=round_id,
+        voter_id=voter_id,
+        voted_for=canonical_vote,
+        model_a=model_a,
+        model_b=model_b,
+        model_a_side=model_a_side,
+        timestamp=datetime.now(timezone.utc).isoformat(),
+    )
+
+    VOTES_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with open(VOTES_FILE, "a") as f:
+        f.write(vote.model_dump_json() + "\n")
+
+    # Send reveal message to Telegram
+    if TELEGRAM_BOT_TOKEN:
+        try:
+            reveal = (
+                f"🎭 Reveal:\n"
+                f"• Response 1 was {_model_display(model_a)}\n"
+                f"• Response 2 was {_model_display(model_b)}\n\n"
+                f"Thanks for voting! 🏆 Live rankings: https://hotdogornot.xyz/battle"
+            )
+            async with httpx.AsyncClient() as http:
+                await http.post(
+                    f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+                    json={"chat_id": int(voter_id), "text": reveal},
+                )
+        except Exception:
+            pass
+
+    return HTMLResponse(
+        "<html><body style='font-family:system-ui;text-align:center;padding:60px'>"
+        f"<h1>Vote recorded!</h1>"
+        f"<p>Response 1 was <b>{_model_display(model_a)}</b></p>"
+        f"<p>Response 2 was <b>{_model_display(model_b)}</b></p>"
+        f"<a href='https://hotdogornot.xyz/battle'>View rankings</a>"
+        "</body></html>"
+    )
 
 
 @router.get("/leaderboard")
