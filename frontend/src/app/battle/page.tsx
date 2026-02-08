@@ -296,7 +296,12 @@ function RoundCard({ round, index }: { round: BattleRound; index: number }) {
               #{index + 1}
             </span>
           </div>
-          <div className="absolute top-2.5 right-3">
+          <div className="absolute top-2.5 right-3 flex items-center gap-1.5">
+            {round.source && (
+              <span className="text-[10px] font-medium bg-orange-500/30 backdrop-blur-sm text-orange-200 px-1.5 py-0.5 rounded">
+                via {round.source}
+              </span>
+            )}
             <span className="text-[10px] font-medium bg-black/50 backdrop-blur-sm text-white/70 px-1.5 py-0.5 rounded">
               {timeAgo(round.timestamp)}
             </span>
@@ -320,12 +325,23 @@ function RoundCard({ round, index }: { round: BattleRound; index: number }) {
           {round.nemotron_latency_ms > 0 && (
             <Tooltip>
               <TooltipTrigger asChild>
-                <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground/50 font-mono tabular-nums">
+                <span className="inline-flex items-center gap-1 text-[11px] text-emerald-400/50 font-mono tabular-nums">
                   <Clock className="size-3" />
                   {(round.nemotron_latency_ms / 1000).toFixed(1)}s
                 </span>
               </TooltipTrigger>
               <TooltipContent>Nemotron inference latency</TooltipContent>
+            </Tooltip>
+          )}
+          {round.claw_latency_ms && round.claw_latency_ms > 0 && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex items-center gap-1 text-[11px] text-orange-400/50 font-mono tabular-nums">
+                  <Clock className="size-3" />
+                  {(round.claw_latency_ms / 1000).toFixed(1)}s
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>OpenClaw inference latency</TooltipContent>
             </Tooltip>
           )}
         </div>
@@ -373,9 +389,19 @@ function RoundCard({ round, index }: { round: BattleRound; index: number }) {
 
 /* ── CTA card ───────────────────────────────────────────────── */
 
+const PKG_MANAGERS = ["npm", "pnpm", "bun"] as const;
+type PkgManager = (typeof PKG_MANAGERS)[number];
+
+const INSTALL_CMDS: Record<PkgManager, string> = {
+  npm: "npx clawhub@latest install hotdog",
+  pnpm: "pnpm dlx clawhub@latest install hotdog",
+  bun: "bunx clawhub@latest install hotdog",
+};
+
 function InstallCTA() {
   const [copied, setCopied] = useState(false);
-  const cmd = "clawhub install hotdog";
+  const [pkg, setPkg] = useState<PkgManager>("npm");
+  const cmd = INSTALL_CMDS[pkg];
 
   function handleCopy() {
     navigator.clipboard.writeText(cmd);
@@ -393,6 +419,25 @@ function InstallCTA() {
           <p className="text-sm text-muted-foreground max-w-md mx-auto">
             Install the skill, send a food photo, and battle Nemotron in real time.
           </p>
+        </div>
+
+        {/* Package manager switcher */}
+        <div className="flex items-center justify-center gap-1">
+          {PKG_MANAGERS.map((pm) => (
+            <Button
+              key={pm}
+              variant={pkg === pm ? "default" : "ghost"}
+              size="sm"
+              onClick={() => setPkg(pm)}
+              className={`text-xs font-mono px-3 h-7 rounded-full ${
+                pkg === pm
+                  ? "bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 border border-orange-500/30"
+                  : "text-muted-foreground/60 hover:text-orange-400"
+              }`}
+            >
+              {pm}
+            </Button>
+          ))}
         </div>
 
         {/* Install command */}

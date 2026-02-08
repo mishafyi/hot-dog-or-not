@@ -158,3 +158,5 @@ class BattleRound(BaseModel):
     claw_reasoning: str
     consensus: str  # yes/no/disagree
     winner: str  # nemotron/openclaw/tie
+    source: str | None = None  # e.g. "@HotDogNotHotDog_Bot", "skill:hotdog"
+    claw_latency_ms: float | None = None  # OpenClaw inference time

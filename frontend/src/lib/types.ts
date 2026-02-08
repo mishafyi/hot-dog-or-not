@@ -158,6 +158,8 @@ export interface BattleRound {
   claw_reasoning: string;
   consensus: string;
   winner: string;
+  source?: string | null;
+  claw_latency_ms?: number | null;
 }
 
 export interface BattleStats {

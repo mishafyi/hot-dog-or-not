@@ -78,6 +78,8 @@ async def submit_round(
     image: UploadFile = File(...),
     claw_answer: str = Form(...),
     claw_reasoning: str = Form(""),
+    source: str = Form(""),
+    claw_latency_ms: float = Form(0.0),
     authorization: str | None = Header(None),
 ):
     token = _verify_token(authorization)
@@ -139,6 +141,8 @@ async def submit_round(
         claw_reasoning=claw_reasoning,
         consensus=consensus,
         winner=winner,
+        source=source or None,
+        claw_latency_ms=claw_latency_ms if claw_latency_ms > 0 else None,
     )
 
     # Append to JSONL
@@ -156,8 +160,10 @@ async def submit_round(
         "openclaw": {
             "answer": claw_answer,
             "reasoning": claw_reasoning,
+            "latency_ms": battle_round.claw_latency_ms,
         },
         "consensus": consensus,
+        "source": battle_round.source,
         "winner": winner,
         "image_url": f"/api/battle/images/{image_filename}",
     }
