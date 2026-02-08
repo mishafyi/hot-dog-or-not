@@ -203,7 +203,7 @@ async def submit_round(
         try:
             base = "https://api.hotdogornot.xyz/api/battle/vote/telegram"
             buttons = []
-            for label, vote in [("Response 1", "first"), ("Response 2", "second"), ("Tie", "tie")]:
+            for label, vote in [("Response 1", "first"), ("Response 2", "second")]:
                 sig = _sign_vote(round_id, telegram_chat_id, vote, first_side)
                 url = f"{base}?round_id={round_id}&voter_id={telegram_chat_id}&voted_for={vote}&first_side={first_side}&sig={sig}"
                 buttons.append({"text": label, "url": url})
