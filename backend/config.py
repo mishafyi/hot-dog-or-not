@@ -42,8 +42,8 @@ MODELS = [
     },
 ]
 
-PROMPT = """Look at the image. Is it a hot dog (food: a sausage served in a bun/roll; any cooking style)?
+PROMPT = """Describe the food in the image in 2-4 sentences. Then decide: is it a hot dog (a sausage served in a bun/roll; any cooking style)?
 
 Output exactly (no thinking, no preamble):
-Observations: <describe the food in 2-4 sentences>
+Observations: <your description>
 Answer: <yes|no>"""
