@@ -201,12 +201,12 @@ async def submit_round(
     # Send Telegram vote buttons if chat_id provided
     if telegram_chat_id and TELEGRAM_BOT_TOKEN:
         try:
-            base = "https://api.hotdogornot.xyz/api/battle/vote/telegram"
             buttons = []
             for label, vote in [("Response 1", "first"), ("Response 2", "second")]:
-                sig = _sign_vote(round_id, telegram_chat_id, vote, first_side)
-                url = f"{base}?round_id={round_id}&voter_id={telegram_chat_id}&voted_for={vote}&first_side={first_side}&sig={sig}"
-                buttons.append({"text": label, "url": url})
+                buttons.append({
+                    "text": label,
+                    "callback_data": f"hdv:{round_id}:{vote}:{first_side}",
+                })
             async with httpx.AsyncClient() as http:
                 await http.post(
                     f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
@@ -293,15 +293,25 @@ async def get_image(filename: str):
 # ── Voting endpoints ──────────────────────────────────────────
 
 
+from pydantic import BaseModel as _BaseModel
+
+class VoteRequest(_BaseModel):
+    round_id: str
+    voter_id: str
+    voted_for: str  # "first", "second", or "tie"
+    first_side: str  # "nemotron" or "openclaw" — which side was shown first
+
 @router.post("/vote/submit")
 async def submit_vote(
-    round_id: str = Form(...),
-    voter_id: str = Form(...),
-    voted_for: str = Form(...),  # "first", "second", or "tie"
-    first_side: str = Form(...),  # "nemotron" or "openclaw" — which side was shown first
+    body: VoteRequest,
+    authorization: str | None = Header(None),
 ):
-    """Simple vote endpoint for Telegram skill. The skill randomizes presentation
-    order and passes which side was shown as 'first'."""
+    """Vote endpoint for callback handler plugin. Accepts JSON body."""
+    round_id = body.round_id
+    voter_id = body.voter_id
+    voted_for = body.voted_for
+    first_side = body.first_side
+
     if voted_for not in ("first", "second", "tie"):
         raise HTTPException(400, "voted_for must be first, second, or tie")
     if first_side not in ("nemotron", "openclaw"):
@@ -312,6 +322,12 @@ async def submit_vote(
     round_ = next((r for r in rounds if r.round_id == round_id), None)
     if not round_:
         raise HTTPException(404, "Round not found")
+
+    # Check for duplicate vote
+    votes = _load_votes()
+    already_voted = any(v.round_id == round_id and v.voter_id == voter_id for v in votes)
+    if already_voted:
+        raise HTTPException(409, "Already voted on this round")
 
     nemotron_model = NEMOTRON_MODEL
     claw_model = round_.claw_model or "unknown"
@@ -349,6 +365,7 @@ async def submit_vote(
 
     return {
         "status": "ok",
+        "reveal": True,
         "first_model": _model_display(model_a),
         "second_model": _model_display(model_b),
     }
