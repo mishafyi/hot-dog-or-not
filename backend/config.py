@@ -44,6 +44,6 @@ MODELS = [
 
 PROMPT = """Look at the image. Is it a hot dog (food: a sausage served in a bun/roll; any cooking style)?
 
-Output exactly:
-Observations: <detailed and accurate description of the food visible in the image>
+Output exactly (no thinking, no preamble):
+Observations: <describe the food in 2-4 sentences>
 Answer: <yes|no>"""

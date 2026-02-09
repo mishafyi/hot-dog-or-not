@@ -31,7 +31,7 @@ VOTE_SIGNING_KEY = os.getenv("VOTE_SIGNING_KEY", secrets.token_hex(32))
 from models import BattleRound, BattleVote
 from services.openrouter_client import OpenRouterClient
 from services.rate_limiter import global_rate_limiter
-from services.response_parser import parse_observations, parse_response
+from services.response_parser import parse_response
 
 router = APIRouter(prefix="/api/battle", tags=["battle"])
 
@@ -199,7 +199,7 @@ async def submit_round(
             NEMOTRON_MODEL, str(image_path)
         )
         nemotron_answer = parse_response(raw_response)
-        nemotron_reasoning = parse_observations(reasoning or raw_response)
+        nemotron_reasoning = reasoning or raw_response
     except Exception as exc:
         nemotron_answer = "error"
         nemotron_reasoning = str(exc)
