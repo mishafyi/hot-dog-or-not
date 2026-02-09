@@ -236,28 +236,25 @@ async def submit_round(
         if best:
             telegram_chat_id = str(best["chat_id"])
 
-    # Send Telegram vote buttons if chat_id available
+    # Send Telegram vote buttons after a delay so OpenClaw's response arrives first
     if telegram_chat_id and TELEGRAM_BOT_TOKEN:
-        try:
+        import asyncio
+
+        async def _send_vote_buttons_delayed():
+            await asyncio.sleep(8)  # wait for OpenClaw to send its message
             buttons = []
             for label, vote in [("Response 1", "first"), ("Response 2", "second")]:
                 buttons.append({
                     "text": label,
                     "callback_data": f"hdv:{round_id}:{vote}:{first_side}",
                 })
-            async with httpx.AsyncClient() as http:
-                await http.post(
-                    f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
-                    json={
-                        "chat_id": int(telegram_chat_id),
-                        "text": "🗳️ Which response do you agree with more?",
-                        "reply_markup": {
-                            "inline_keyboard": [buttons],
-                        },
-                    },
-                )
-        except Exception:
-            pass  # vote buttons are best-effort
+            await _tg_api("sendMessage", {
+                "chat_id": int(telegram_chat_id),
+                "text": "🗳️ Which response do you agree with more?",
+                "reply_markup": {"inline_keyboard": [buttons]},
+            })
+
+        asyncio.create_task(_send_vote_buttons_delayed())
 
     return {
         "round_id": round_id,
