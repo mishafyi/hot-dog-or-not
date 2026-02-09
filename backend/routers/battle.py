@@ -158,7 +158,7 @@ async def submit_round(
     claw_reasoning: str = Form(""),
     source: str = Form(""),
     claw_latency_ms: float = Form(0.0),
-    claw_model: str = Form(""),
+    claw_model: str = Form("openclaw"),
     telegram_chat_id: str = Form(""),
     authorization: str | None = Header(None),
 ):
