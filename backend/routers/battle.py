@@ -286,30 +286,17 @@ async def submit_round(
             "reply_markup": {"inline_keyboard": [buttons]},
         })
 
-    return {
-        "round_id": round_id,
-        "nemotron": {
-            "answer": nemotron_answer,
-            "reasoning": nemotron_reasoning,
-            "latency_ms": latency_ms,
-        },
-        "openclaw": {
-            "answer": claw_answer,
-            "reasoning": claw_reasoning,
-            "latency_ms": battle_round.claw_latency_ms,
-        },
-        "consensus": consensus,
-        "source": battle_round.source,
-        "winner": winner,
-        "image_url": f"/api/battle/images/{image_filename}",
-        "first_side": first_side,
-        "formatted_text": formatted_text,
-    }
-
     audit_log.info(
         "BATTLE round=%s model=%s source=%s winner=%s",
         round_id[:8], claw_model or "?", battle_round.source or "?", winner,
     )
+
+    # Minimal response — no model names or reasoning to prevent LLM from leaking them.
+    # All user-facing messages are sent directly via Telegram Bot API above.
+    return {
+        "status": "ok",
+        "round_id": round_id,
+    }
 
 
 @router.get("/feed")
