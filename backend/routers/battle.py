@@ -13,7 +13,7 @@ import hmac
 import secrets
 
 import httpx
-from fastapi import APIRouter, File, Form, Header, HTTPException, Query, UploadFile
+from fastapi import APIRouter, File, Form, Header, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
 
 from config import settings
@@ -33,6 +33,8 @@ BATTLE_IMAGES_DIR = Path(settings.results_dir) / "battle_images"
 
 VOTES_FILE = Path(settings.results_dir) / "votes.jsonl"
 
+OPENCLAW_WEBHOOK_URL = os.getenv("OPENCLAW_WEBHOOK_URL", "http://localhost:18811/telegram-webhook")
+
 BATTLE_RATE_LIMIT = 5  # requests per minute per token
 _token_requests: dict[str, list[float]] = defaultdict(list)
 
@@ -42,6 +44,22 @@ MODEL_DISPLAY_NAMES: dict[str, str] = {
     "google/gemini-2.5-flash": "Gemini 2.5 Flash",
     "google/gemini-2.5-flash-preview": "Gemini 2.5 Flash",
 }
+
+
+async def _tg_api(method: str, data: dict) -> dict | None:
+    """Call a Telegram Bot API method."""
+    if not TELEGRAM_BOT_TOKEN:
+        return None
+    try:
+        async with httpx.AsyncClient() as http:
+            r = await http.post(
+                f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/{method}",
+                json=data,
+                timeout=10,
+            )
+            return r.json()
+    except Exception:
+        return None
 
 
 def _model_display(model_id: str) -> str:
@@ -559,3 +577,132 @@ async def get_leaderboard():
             "total_votes": total,
             "min_votes_needed": min_votes,
         }
+
+
+# ── Telegram webhook ──────────────────────────────────────────
+
+
+@router.post("/telegram/webhook")
+async def telegram_webhook(request: Request):
+    """Receive Telegram updates. Handle vote callbacks instantly,
+    forward everything else to OpenClaw."""
+    update = await request.json()
+
+    # Handle vote callback queries
+    if "callback_query" in update:
+        cb = update["callback_query"]
+        data = cb.get("data", "")
+        if data.startswith("hdv:"):
+            await _handle_vote_callback(cb)
+            return {"ok": True}
+
+    # Forward everything else to OpenClaw
+    try:
+        async with httpx.AsyncClient() as http:
+            await http.post(OPENCLAW_WEBHOOK_URL, json=update, timeout=10)
+    except Exception:
+        pass  # best-effort forward
+
+    return {"ok": True}
+
+
+async def _handle_vote_callback(cb: dict):
+    """Process an hdv: vote callback inline — no LLM needed."""
+    query_id = cb["id"]
+    data = cb.get("data", "")
+    chat_id = cb.get("message", {}).get("chat", {}).get("id")
+    message_id = cb.get("message", {}).get("message_id")
+    sender_id = str(cb.get("from", {}).get("id", ""))
+
+    # Parse hdv:{round_id}:{vote}:{first_side}
+    parts = data.split(":")
+    if len(parts) != 4:
+        await _tg_api("answerCallbackQuery", {
+            "callback_query_id": query_id,
+            "text": "Invalid vote data",
+        })
+        return
+
+    _, round_id, voted_for, first_side = parts
+
+    try:
+        rounds = _load_rounds()
+        round_ = next((r for r in rounds if r.round_id == round_id), None)
+        if not round_:
+            await _tg_api("answerCallbackQuery", {
+                "callback_query_id": query_id, "text": "Round not found",
+            })
+            return
+
+        # Check duplicate
+        votes = _load_votes()
+        if any(v.round_id == round_id and v.voter_id == sender_id for v in votes):
+            await _tg_api("answerCallbackQuery", {
+                "callback_query_id": query_id,
+                "text": "You already voted on this round!",
+                "show_alert": True,
+            })
+            return
+
+        if voted_for not in ("first", "second", "tie"):
+            await _tg_api("answerCallbackQuery", {
+                "callback_query_id": query_id, "text": "Invalid vote",
+            })
+            return
+        if first_side not in ("nemotron", "openclaw"):
+            await _tg_api("answerCallbackQuery", {
+                "callback_query_id": query_id, "text": "Invalid vote",
+            })
+            return
+
+        nemotron_model = NEMOTRON_MODEL
+        claw_model = round_.claw_model or "unknown"
+
+        if first_side == "nemotron":
+            model_a, model_b = nemotron_model, claw_model
+            model_a_side = "nemotron"
+        else:
+            model_a, model_b = claw_model, nemotron_model
+            model_a_side = "openclaw"
+
+        canonical_vote = {"first": "model_a", "second": "model_b"}.get(voted_for, "tie")
+
+        vote = BattleVote(
+            vote_id=uuid.uuid4().hex[:8],
+            round_id=round_id,
+            voter_id=sender_id,
+            voted_for=canonical_vote,
+            model_a=model_a,
+            model_b=model_b,
+            model_a_side=model_a_side,
+            timestamp=datetime.now(timezone.utc).isoformat(),
+        )
+
+        VOTES_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(VOTES_FILE, "a") as f:
+            f.write(vote.model_dump_json() + "\n")
+
+        # Answer callback (dismiss spinner)
+        await _tg_api("answerCallbackQuery", {"callback_query_id": query_id})
+
+        # Edit the original vote message to show the reveal
+        reveal = (
+            f"🗳️ Vote recorded — thanks!\n\n"
+            f"🔓 Reveal:\n"
+            f"• Response 1 was *{_model_display(model_a)}*\n"
+            f"• Response 2 was *{_model_display(model_b)}*\n\n"
+            f"🏆 [Live rankings](https://hotdogornot.xyz/battle)"
+        )
+        if chat_id and message_id:
+            await _tg_api("editMessageText", {
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "text": reveal,
+                "parse_mode": "Markdown",
+            })
+
+    except Exception:
+        await _tg_api("answerCallbackQuery", {
+            "callback_query_id": query_id,
+            "text": "Something went wrong",
+        })
