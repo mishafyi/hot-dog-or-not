@@ -289,7 +289,12 @@ async def submit_round(
         round_id[:8], claw_model or "?", battle_round.source or "?", winner,
     )
 
-    return {}
+    return {
+        "round_id": round_id,
+        "nemotron_answer": nemotron_answer,
+        "nemotron_reasoning": nemotron_reasoning,
+        "formatted_text": formatted_text,
+    }
 
 
 @router.get("/feed")
