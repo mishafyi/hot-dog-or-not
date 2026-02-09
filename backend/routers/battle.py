@@ -289,9 +289,7 @@ async def submit_round(
         round_id[:8], claw_model or "?", battle_round.source or "?", winner,
     )
 
-    # Empty response — all user-facing messages sent via Telegram Bot API above.
-    # No data here to prevent the LLM from narrating it.
-    return {"status": "ok"}
+    return {}
 
 
 @router.get("/feed")
