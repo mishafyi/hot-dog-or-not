@@ -34,6 +34,7 @@ BATTLE_IMAGES_DIR = Path(settings.results_dir) / "battle_images"
 VOTES_FILE = Path(settings.results_dir) / "votes.jsonl"
 
 OPENCLAW_WEBHOOK_URL = os.getenv("OPENCLAW_WEBHOOK_URL", "http://localhost:18811/telegram-webhook")
+TELEGRAM_WEBHOOK_SECRET = os.getenv("TELEGRAM_WEBHOOK_SECRET", "")
 
 BATTLE_RATE_LIMIT = 5  # requests per minute per token
 _token_requests: dict[str, list[float]] = defaultdict(list)
@@ -586,6 +587,12 @@ async def get_leaderboard():
 async def telegram_webhook(request: Request):
     """Receive Telegram updates. Handle vote callbacks instantly,
     forward everything else to OpenClaw."""
+    # Verify Telegram webhook secret if configured
+    if TELEGRAM_WEBHOOK_SECRET:
+        secret_header = request.headers.get("x-telegram-bot-api-secret-token", "")
+        if not hmac.compare_digest(secret_header, TELEGRAM_WEBHOOK_SECRET):
+            raise HTTPException(403, "Invalid webhook secret")
+
     update = await request.json()
 
     # Handle vote callback queries
@@ -598,8 +605,11 @@ async def telegram_webhook(request: Request):
 
     # Forward everything else to OpenClaw
     try:
+        headers = {}
+        if TELEGRAM_WEBHOOK_SECRET:
+            headers["X-Telegram-Bot-Api-Secret-Token"] = TELEGRAM_WEBHOOK_SECRET
         async with httpx.AsyncClient() as http:
-            await http.post(OPENCLAW_WEBHOOK_URL, json=update, timeout=10)
+            await http.post(OPENCLAW_WEBHOOK_URL, json=update, headers=headers, timeout=10)
     except Exception:
         pass  # best-effort forward
 
