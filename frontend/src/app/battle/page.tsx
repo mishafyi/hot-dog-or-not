@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, Clock, Copy, Check, ExternalLink, Trophy } from "lucide-react";
 import Image from "next/image";
@@ -227,52 +227,86 @@ function ReasoningPanel({
   );
 }
 
-/* ── Round card ─────────────────────────────────────────────── */
+/* ── Grid thumbnail ─────────────────────────────────────────── */
 
-function RoundCard({ round, index }: { round: BattleRound; index: number }) {
-  const [expanded, setExpanded] = useState(false);
-  const [imgOpen, setImgOpen] = useState(false);
+function GridThumbnail({
+  round,
+  index,
+  onClick,
+}: {
+  round: BattleRound;
+  index: number;
+  onClick: () => void;
+}) {
+  const imgSrc = `${API_URL}/api/battle/images/${round.image_filename}`;
+  const winnerIcon =
+    round.vote_winner === "nemotron" ? "🟢" : round.vote_winner === "openclaw" ? "🟠" : "⚪";
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ duration: 0.2 }}
+      className="relative aspect-square cursor-pointer group overflow-hidden rounded-lg bg-black/30"
+      onClick={onClick}
+    >
+      <img
+        src={imgSrc}
+        alt={`Round ${index + 1}`}
+        loading="lazy"
+        className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+      />
+      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+      <div className="absolute bottom-1.5 right-1.5 text-xs">{winnerIcon}</div>
+      <div className="absolute top-1.5 left-1.5">
+        <span className="text-[9px] font-bold font-mono bg-black/60 backdrop-blur-sm text-white/70 px-1.5 py-0.5 rounded">
+          #{index + 1}
+        </span>
+      </div>
+    </motion.div>
+  );
+}
+
+/* ── Expanded round detail ─────────────────────────────────── */
+
+function RoundDetail({ round, index, onClose }: { round: BattleRound; index: number; onClose: () => void }) {
+  const [showReasoning, setShowReasoning] = useState(false);
   const hasReasoning = round.nemotron_reasoning || round.claw_reasoning;
   const imgSrc = `${API_URL}/api/battle/images/${round.image_filename}`;
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: -12 }}
-      animate={{ opacity: 1, y: 0 }}
+      initial={{ opacity: 0, height: 0 }}
+      animate={{ opacity: 1, height: "auto" }}
+      exit={{ opacity: 0, height: 0 }}
       transition={{ duration: 0.25 }}
+      className="col-span-3 overflow-hidden"
     >
-      <Card className="overflow-hidden hover:border-border/80 transition-colors !py-0 !gap-0">
-        {/* Image */}
-        <div className="relative w-full aspect-[16/10] bg-black/30 cursor-pointer group" onClick={() => setImgOpen(!imgOpen)}>
+      <Card className="overflow-hidden !py-0 !gap-0">
+        {/* Full image */}
+        <div className="relative w-full bg-black/20">
           <img
             src={imgSrc}
             alt={`Round ${index + 1}`}
-            className={`absolute inset-0 w-full h-full transition-[object-fit] duration-300 ${imgOpen ? "object-contain" : "object-cover"}`}
+            className="w-full max-h-[70vh] object-contain"
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-card/80 via-transparent to-transparent opacity-60" />
-
-          {/* Top bar */}
-          <div className="absolute top-3 left-3 right-3 flex items-center justify-between">
+          <button
+            onClick={onClose}
+            className="absolute top-3 right-3 text-[10px] font-bold bg-black/60 backdrop-blur-sm text-white/80 px-2.5 py-1 rounded-md hover:bg-black/80 transition-colors"
+          >
+            Close
+          </button>
+          <div className="absolute top-3 left-3 flex items-center gap-1.5">
             <span className="text-[10px] font-bold font-mono bg-black/60 backdrop-blur-sm text-white/80 px-2 py-1 rounded-md">
               #{index + 1}
             </span>
-            <div className="flex items-center gap-1.5">
-              {round.source && (
-                <span className="text-[10px] font-medium bg-orange-500/30 backdrop-blur-sm text-orange-200 px-2 py-1 rounded-md">
-                  {maskSource(round.source)}
-                  {round.claw_model && (
-                    <span className="opacity-70"> ({round.claw_model.replace(/^.*\//, "")})</span>
-                  )}
-                </span>
-              )}
-              <span className="text-[10px] font-medium bg-black/50 backdrop-blur-sm text-white/70 px-2 py-1 rounded-md">
-                {timeAgo(round.timestamp)}
-              </span>
-            </div>
+            <span className="text-[10px] font-medium bg-black/50 backdrop-blur-sm text-white/70 px-2 py-1 rounded-md">
+              {timeAgo(round.timestamp)}
+            </span>
           </div>
         </div>
 
-        {/* VS badges row */}
+        {/* VS badges */}
         <div className="px-4 py-3 flex items-center justify-center">
           <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 w-full max-w-xs">
             <div className="flex justify-end">
@@ -291,30 +325,20 @@ function RoundCard({ round, index }: { round: BattleRound; index: number }) {
             {round.vote_winner === "tie" ? "Tied" : round.vote_winner === "nemotron" ? "Nemotron preferred" : "OpenClaw preferred"}
             {round.vote_count && round.vote_count > 1 ? ` (${round.vote_count} votes)` : ""}
           </span>
-          {round.claw_latency_ms && round.claw_latency_ms > 0 && (
-            <span className="inline-flex items-center gap-1 text-[11px] text-orange-400/50 font-mono tabular-nums">
-              <Clock className="size-3" />
-              OpenClaw {(round.claw_latency_ms / 1000).toFixed(1)}s
-            </span>
-          )}
         </div>
 
-        {/* Why button */}
+        {/* Reasoning toggle */}
         {hasReasoning && (
           <button
-            onClick={() => setExpanded(!expanded)}
+            onClick={() => setShowReasoning(!showReasoning)}
             className="w-full border-t border-border/30 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors flex items-center justify-center gap-1.5"
           >
-            <ChevronDown
-              className={`size-4 transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
-            />
-            {expanded ? "Hide reasoning" : "Show reasoning"}
+            <ChevronDown className={`size-4 transition-transform duration-200 ${showReasoning ? "rotate-180" : ""}`} />
+            {showReasoning ? "Hide reasoning" : "Show reasoning"}
           </button>
         )}
-
-        {/* Expandable reasoning */}
         <AnimatePresence>
-          {expanded && hasReasoning && (
+          {showReasoning && hasReasoning && (
             <motion.div
               initial={{ height: 0, opacity: 0 }}
               animate={{ height: "auto", opacity: 1 }}
@@ -323,14 +347,8 @@ function RoundCard({ round, index }: { round: BattleRound; index: number }) {
               className="overflow-hidden"
             >
               <div className="px-4 pb-4 space-y-2 border-t border-border/30 pt-3">
-                <ReasoningPanel
-                  reasoning={round.nemotron_reasoning}
-                  side="nemotron"
-                />
-                <ReasoningPanel
-                  reasoning={round.claw_reasoning}
-                  side="openclaw"
-                />
+                <ReasoningPanel reasoning={round.nemotron_reasoning} side="nemotron" />
+                <ReasoningPanel reasoning={round.claw_reasoning} side="openclaw" />
               </div>
             </motion.div>
           )}
@@ -570,6 +588,7 @@ export default function BattlePage() {
   const [rounds, setRounds] = useState<BattleRound[]>([]);
   const [stats, setStats] = useState<BattleStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [selectedRoundId, setSelectedRoundId] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     try {
@@ -633,45 +652,51 @@ export default function BattlePage() {
         )}
       </div>
 
-      {/* Feed */}
-      <div className="space-y-3">
-        {loading && rounds.length === 0 ? (
-          Array.from({ length: 3 }).map((_, i) => (
-            <Card key={i} className="overflow-hidden">
-              <Skeleton className="w-full h-40" />
-              <div className="p-4 flex flex-col items-center gap-3">
-                <div className="flex gap-3">
-                  <Skeleton className="h-8 w-20 rounded-lg" />
-                  <Skeleton className="h-8 w-20 rounded-lg" />
-                </div>
-                <Skeleton className="h-5 w-36 rounded-full" />
-              </div>
-            </Card>
-          ))
-        ) : sortedRounds.length === 0 ? (
-          <Card className="p-12 text-center">
-            <div className="space-y-3">
-              <div className="text-4xl">🌭</div>
-              <p className="text-muted-foreground font-medium">
-                No voted rounds yet
-              </p>
-              <p className="text-sm text-muted-foreground/60">
-                Rounds appear here after users vote on Telegram.
-              </p>
-            </div>
-          </Card>
-        ) : (
+      {/* Feed — Instagram grid */}
+      {loading && rounds.length === 0 ? (
+        <div className="grid grid-cols-3 gap-1.5">
+          {Array.from({ length: 9 }).map((_, i) => (
+            <Skeleton key={i} className="aspect-square rounded-lg" />
+          ))}
+        </div>
+      ) : sortedRounds.length === 0 ? (
+        <Card className="p-12 text-center">
+          <div className="space-y-3">
+            <div className="text-4xl">🌭</div>
+            <p className="text-muted-foreground font-medium">
+              No voted rounds yet
+            </p>
+            <p className="text-sm text-muted-foreground/60">
+              Rounds appear here after users vote on Telegram.
+            </p>
+          </div>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-3 gap-1.5">
           <AnimatePresence mode="popLayout">
-            {sortedRounds.map((round, i) => (
-              <RoundCard
-                key={round.round_id}
-                round={round}
-                index={rounds.length - 1 - i}
-              />
-            ))}
+            {sortedRounds.map((round, i) => {
+              const idx = rounds.length - 1 - i;
+              const isSelected = selectedRoundId === round.round_id;
+              return (
+                <React.Fragment key={round.round_id}>
+                  <GridThumbnail
+                    round={round}
+                    index={idx}
+                    onClick={() => setSelectedRoundId(isSelected ? null : round.round_id)}
+                  />
+                  {isSelected && (
+                    <RoundDetail
+                      round={round}
+                      index={idx}
+                      onClose={() => setSelectedRoundId(null)}
+                    />
+                  )}
+                </React.Fragment>
+              );
+            })}
           </AnimatePresence>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* CTA */}
       <InstallCTA />
