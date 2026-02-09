@@ -151,22 +151,19 @@ def _determine_winner(
     return "disagree", "disagree"
 
 
+CLAW_MODEL_DEFAULT = "anthropic/claude-haiku-4-5-20251001:beta"
+
+
 @router.post("/round")
 async def submit_round(
     image: UploadFile = File(...),
-    claw_answer: str = Form(...),
-    claw_reasoning: str = Form(""),
+    claw_model: str = Form(CLAW_MODEL_DEFAULT),
     source: str = Form(""),
-    claw_latency_ms: float = Form(0.0),
-    claw_model: str = Form("openclaw"),
     telegram_chat_id: str = Form(""),
     authorization: str | None = Header(None),
 ):
     token = _verify_token(authorization)
     _check_rate_limit(token)
-
-    if claw_answer not in ("yes", "no", "error"):
-        raise HTTPException(400, "claw_answer must be yes, no, or error")
 
     # Validate image content type
     if not image.content_type or not image.content_type.startswith("image/"):
@@ -192,21 +189,26 @@ async def submit_round(
     image_path = BATTLE_IMAGES_DIR / image_filename
     image_path.write_bytes(content)
 
-    # Classify with Nemotron
-    client = OpenRouterClient()
-    try:
-        await global_rate_limiter.acquire()
-        raw_response, reasoning, latency_ms = await client.classify_image(
-            NEMOTRON_MODEL, str(image_path)
-        )
-        nemotron_answer = parse_response(raw_response)
-        nemotron_reasoning = reasoning or raw_response
-    except Exception as exc:
-        nemotron_answer = "error"
-        nemotron_reasoning = str(exc)
-        latency_ms = 0.0
-    finally:
-        await client.close()
+    # Classify with both models (backend handles everything)
+    import asyncio
+
+    async def _classify(model_id: str) -> tuple[str, str, float]:
+        client = OpenRouterClient()
+        try:
+            await global_rate_limiter.acquire()
+            raw, reasoning, lat = await client.classify_image(model_id, str(image_path))
+            answer = parse_response(raw)
+            return answer, reasoning or raw, lat
+        except Exception as exc:
+            return "error", str(exc), 0.0
+        finally:
+            await client.close()
+
+    (nemotron_answer, nemotron_reasoning, nemotron_latency), \
+    (claw_answer, claw_reasoning, claw_latency) = await asyncio.gather(
+        _classify(NEMOTRON_MODEL),
+        _classify(claw_model),
+    )
 
     consensus, winner = _determine_winner(nemotron_answer, claw_answer)
 
@@ -216,13 +218,13 @@ async def submit_round(
         image_filename=image_filename,
         nemotron_answer=nemotron_answer,
         nemotron_reasoning=nemotron_reasoning,
-        nemotron_latency_ms=latency_ms,
+        nemotron_latency_ms=nemotron_latency,
         claw_answer=claw_answer,
         claw_reasoning=claw_reasoning,
         consensus=consensus,
         winner=winner,
         source=source or None,
-        claw_latency_ms=claw_latency_ms if claw_latency_ms > 0 else None,
+        claw_latency_ms=claw_latency if claw_latency > 0 else None,
         claw_model=claw_model or None,
     )
 
