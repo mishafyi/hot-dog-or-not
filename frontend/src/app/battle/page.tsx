@@ -7,7 +7,6 @@ import Image from "next/image";
 import { api } from "@/lib/api";
 import type { BattleRound, BattleStats, ArenaLeaderboard } from "@/lib/types";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -144,23 +143,26 @@ function ScoreHeader({ stats }: { stats: BattleStats | null }) {
   );
 }
 
-/* ── Verdict badge ──────────────────────────────────────────── */
+/* ── Side badge (vote-aware) ───────────────────────────────── */
 
-function VerdictBadge({ answer, side }: { answer: string; side: "nemotron" | "openclaw" }) {
-  const isYes = answer === "yes";
-  const isNo = answer === "no";
+function SideBadge({ side, voteWinner }: { side: "nemotron" | "openclaw"; voteWinner?: string }) {
+  const isWinner = voteWinner === side;
+  const isTie = voteWinner === "tie";
+  const isLoser = !isWinner && !isTie;
 
-  const colors = isYes
-    ? "bg-green-500/10 text-green-400 border-green-500/20"
-    : isNo
-    ? "bg-red-500/10 text-red-400 border-red-500/20"
-    : "bg-yellow-500/10 text-yellow-400 border-yellow-500/20";
+  const baseColors = side === "nemotron"
+    ? isWinner
+      ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+      : "bg-white/5 text-white/40 border-white/10"
+    : isWinner
+      ? "bg-orange-500/20 text-orange-400 border-orange-500/30"
+      : "bg-white/5 text-white/40 border-white/10";
 
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <div
-          className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border backdrop-blur-sm bg-opacity-90 font-bold transition-colors ${colors}`}
+          className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border backdrop-blur-sm font-bold transition-colors ${baseColors} ${isLoser ? "opacity-50" : ""}`}
         >
           {side === "nemotron" ? (
             <Image
@@ -168,44 +170,19 @@ function VerdictBadge({ answer, side }: { answer: string; side: "nemotron" | "op
               alt="NVIDIA"
               width={54}
               height={10}
-              className="h-3.5 w-auto flex-shrink-0"
+              className={`h-3.5 w-auto flex-shrink-0 ${isLoser ? "opacity-50" : ""}`}
             />
           ) : (
             <span className="text-base">🦞</span>
           )}
-          <span className="uppercase text-base tracking-wide">{answer}</span>
+          {isWinner && <Trophy className="size-3.5" />}
         </div>
       </TooltipTrigger>
       <TooltipContent>
-        {side === "nemotron" ? "Nemotron Nano 12B VL" : "OpenClaw"}: {answer}
+        {side === "nemotron" ? "Nemotron Nano 12B VL" : "OpenClaw"}
+        {isWinner ? " — Preferred" : isTie ? " — Tie" : ""}
       </TooltipContent>
     </Tooltip>
-  );
-}
-
-/* ── Outcome indicator ──────────────────────────────────────── */
-
-function OutcomeBadge({ voteWinner, voteCount }: { voteWinner?: string; voteCount?: number }) {
-  const countLabel = voteCount && voteCount > 1 ? ` (${voteCount} votes)` : "";
-
-  if (voteWinner === "nemotron") {
-    return (
-      <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 gap-1">
-        <Image src="/logos/NVIDIA.webp" alt="" width={48} height={9} className="h-2.5 w-auto" /> Preferred{countLabel}
-      </Badge>
-    );
-  }
-  if (voteWinner === "openclaw") {
-    return (
-      <Badge className="bg-orange-500/10 text-orange-400 border-orange-500/20 gap-1">
-        🦞 Preferred{countLabel}
-      </Badge>
-    );
-  }
-  return (
-    <Badge variant="secondary" className="gap-1">
-      <Check className="size-3" /> Tie{countLabel}
-    </Badge>
   );
 }
 
@@ -290,21 +267,24 @@ function RoundCard({ round, index }: { round: BattleRound; index: number }) {
             </span>
           </div>
 
-          {/* Verdicts overlaid at bottom of image */}
+          {/* Vote result overlaid at bottom of image */}
           <div className="absolute bottom-3 inset-x-0 grid grid-cols-[1fr_auto_1fr] items-center gap-3 px-4">
             <div className="flex justify-end">
-              <VerdictBadge answer={round.nemotron_answer} side="nemotron" />
+              <SideBadge side="nemotron" voteWinner={round.vote_winner} />
             </div>
             <span className="text-white/70 text-sm font-black uppercase tracking-widest drop-shadow-lg">VS</span>
             <div className="flex justify-start">
-              <VerdictBadge answer={round.claw_answer} side="openclaw" />
+              <SideBadge side="openclaw" voteWinner={round.vote_winner} />
             </div>
           </div>
         </div>
 
-        {/* Outcome row */}
+        {/* Vote info row */}
         <div className="px-4 py-3 flex items-center justify-center gap-3">
-          <OutcomeBadge voteWinner={round.vote_winner} voteCount={round.vote_count} />
+          <span className="text-xs text-muted-foreground/60">
+            {round.vote_winner === "tie" ? "Tied" : round.vote_winner === "nemotron" ? "Nemotron preferred" : "OpenClaw preferred"}
+            {round.vote_count && round.vote_count > 1 ? ` (${round.vote_count} votes)` : ""}
+          </span>
           {round.claw_latency_ms && round.claw_latency_ms > 0 && (
             <span className="inline-flex items-center gap-1 text-[11px] text-orange-400/50 font-mono tabular-nums">
               <Clock className="size-3" />
