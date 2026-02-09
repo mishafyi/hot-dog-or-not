@@ -39,6 +39,11 @@ TELEGRAM_WEBHOOK_SECRET = os.getenv("TELEGRAM_WEBHOOK_SECRET", "")
 BATTLE_RATE_LIMIT = 5  # requests per minute per token
 _token_requests: dict[str, list[float]] = defaultdict(list)
 
+# Store recent Telegram context from webhook updates so the battle API
+# can auto-fill chat_id/sender without the skill needing to extract them.
+# Keyed by Telegram user_id, expires after 120s.
+_recent_tg_context: dict[int, dict] = {}  # {user_id: {chat_id, sender, ts}}
+
 # Model display names
 MODEL_DISPLAY_NAMES: dict[str, str] = {
     "nvidia/nemotron-nano-12b-v2-vl:free": "Nemotron 12B",
@@ -217,7 +222,21 @@ async def submit_round(
     import random
     first_side = random.choice(["nemotron", "openclaw"])
 
-    # Send Telegram vote buttons if chat_id provided
+    # Auto-fill telegram_chat_id from recent webhook context if not provided
+    if not telegram_chat_id:
+        now = time.time()
+        # Find the most recent context within 120 seconds
+        best = None
+        for uid, ctx in list(_recent_tg_context.items()):
+            if now - ctx["ts"] > 120:
+                del _recent_tg_context[uid]
+                continue
+            if best is None or ctx["ts"] > best["ts"]:
+                best = ctx
+        if best:
+            telegram_chat_id = str(best["chat_id"])
+
+    # Send Telegram vote buttons if chat_id available
     if telegram_chat_id and TELEGRAM_BOT_TOKEN:
         try:
             buttons = []
@@ -602,6 +621,21 @@ async def telegram_webhook(request: Request):
         if data.startswith("hdv:"):
             await _handle_vote_callback(cb)
             return {"ok": True}
+
+    # Store context from photo messages for the battle API to use
+    msg = update.get("message", {})
+    if msg.get("photo"):
+        from_user = msg.get("from", {})
+        user_id = from_user.get("id")
+        if user_id:
+            username = from_user.get("username", "")
+            name = from_user.get("first_name", "unknown")
+            sender = f"@{username}" if username else name
+            _recent_tg_context[user_id] = {
+                "chat_id": msg.get("chat", {}).get("id", user_id),
+                "sender": sender,
+                "ts": time.time(),
+            }
 
     # Forward everything else to OpenClaw
     try:
