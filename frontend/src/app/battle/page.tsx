@@ -231,7 +231,9 @@ function ReasoningPanel({
 
 function RoundCard({ round, index }: { round: BattleRound; index: number }) {
   const [expanded, setExpanded] = useState(false);
+  const [imgOpen, setImgOpen] = useState(false);
   const hasReasoning = round.nemotron_reasoning || round.claw_reasoning;
+  const imgSrc = `${API_URL}/api/battle/images/${round.image_filename}`;
 
   return (
     <motion.div
@@ -240,47 +242,51 @@ function RoundCard({ round, index }: { round: BattleRound; index: number }) {
       transition={{ duration: 0.25 }}
     >
       <Card className="overflow-hidden hover:border-border/80 transition-colors !py-0 !gap-0">
-        {/* Image banner */}
-        <div className="relative w-full h-28 bg-black/30">
+        {/* Image */}
+        <div className="relative w-full aspect-[16/10] bg-black/30 cursor-pointer group" onClick={() => setImgOpen(!imgOpen)}>
           <img
-            src={`${API_URL}/api/battle/images/${round.image_filename}`}
+            src={imgSrc}
             alt={`Round ${index + 1}`}
-            className="absolute inset-0 w-full h-full object-contain object-left"
+            className={`absolute inset-0 w-full h-full transition-[object-fit] duration-300 ${imgOpen ? "object-contain" : "object-cover"}`}
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-card via-card/40 to-transparent" />
-          <div className="absolute top-2.5 left-3">
-            <span className="text-[10px] font-bold font-mono bg-black/60 backdrop-blur-sm text-white/80 px-1.5 py-0.5 rounded">
+          <div className="absolute inset-0 bg-gradient-to-t from-card/80 via-transparent to-transparent opacity-60" />
+
+          {/* Top bar */}
+          <div className="absolute top-3 left-3 right-3 flex items-center justify-between">
+            <span className="text-[10px] font-bold font-mono bg-black/60 backdrop-blur-sm text-white/80 px-2 py-1 rounded-md">
               #{index + 1}
             </span>
-          </div>
-          <div className="absolute top-2.5 right-3 flex items-center gap-1.5">
-            {round.source && (
-              <span className="text-[10px] font-medium bg-orange-500/30 backdrop-blur-sm text-orange-200 px-1.5 py-0.5 rounded">
-                {maskSource(round.source)}
-                {round.claw_model && (
-                  <span className="opacity-70"> ({round.claw_model.replace(/^.*\//, "")})</span>
-                )}
+            <div className="flex items-center gap-1.5">
+              {round.source && (
+                <span className="text-[10px] font-medium bg-orange-500/30 backdrop-blur-sm text-orange-200 px-2 py-1 rounded-md">
+                  {maskSource(round.source)}
+                  {round.claw_model && (
+                    <span className="opacity-70"> ({round.claw_model.replace(/^.*\//, "")})</span>
+                  )}
+                </span>
+              )}
+              <span className="text-[10px] font-medium bg-black/50 backdrop-blur-sm text-white/70 px-2 py-1 rounded-md">
+                {timeAgo(round.timestamp)}
               </span>
-            )}
-            <span className="text-[10px] font-medium bg-black/50 backdrop-blur-sm text-white/70 px-1.5 py-0.5 rounded">
-              {timeAgo(round.timestamp)}
-            </span>
+            </div>
           </div>
+        </div>
 
-          {/* Vote result overlaid at bottom of image */}
-          <div className="absolute bottom-3 inset-x-0 grid grid-cols-[1fr_auto_1fr] items-center gap-3 px-4">
+        {/* VS badges row */}
+        <div className="px-4 py-3 flex items-center justify-center">
+          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 w-full max-w-xs">
             <div className="flex justify-end">
               <SideBadge side="nemotron" voteWinner={round.vote_winner} />
             </div>
-            <span className="text-white/70 text-sm font-black uppercase tracking-widest drop-shadow-lg">VS</span>
+            <span className="text-muted-foreground/50 text-xs font-black uppercase tracking-widest">VS</span>
             <div className="flex justify-start">
               <SideBadge side="openclaw" voteWinner={round.vote_winner} />
             </div>
           </div>
         </div>
 
-        {/* Vote info row */}
-        <div className="px-4 py-3 flex items-center justify-center gap-3">
+        {/* Vote info */}
+        <div className="px-4 pb-3 flex items-center justify-center gap-3">
           <span className="text-xs text-muted-foreground/60">
             {round.vote_winner === "tie" ? "Tied" : round.vote_winner === "nemotron" ? "Nemotron preferred" : "OpenClaw preferred"}
             {round.vote_count && round.vote_count > 1 ? ` (${round.vote_count} votes)` : ""}
