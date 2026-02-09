@@ -580,9 +580,12 @@ async def vote_telegram(
     )
 
 
+EXCLUDED_MODELS = {"openclaw", "unknown"}
+
+
 @router.get("/leaderboard")
 async def get_leaderboard():
-    votes = _load_votes()
+    votes = [v for v in _load_votes() if v.model_a not in EXCLUDED_MODELS and v.model_b not in EXCLUDED_MODELS]
     total = len(votes)
     min_votes = 2
 
