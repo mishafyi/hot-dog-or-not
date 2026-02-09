@@ -200,6 +200,10 @@ async def submit_round(
         )
         nemotron_answer = parse_response(raw_response)
         nemotron_reasoning = reasoning or raw_response
+        # Truncate to first 4 sentences to keep responses concise
+        _sentences = nemotron_reasoning.split('. ')
+        if len(_sentences) > 4:
+            nemotron_reasoning = '. '.join(_sentences[:4]) + '.'
     except Exception as exc:
         nemotron_answer = "error"
         nemotron_reasoning = str(exc)
