@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 import uuid
@@ -17,6 +18,13 @@ from fastapi import APIRouter, File, Form, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse
 
 from config import settings
+
+# Security audit logger — flags unauthorized access attempts
+audit_log = logging.getLogger("battle.audit")
+audit_log.setLevel(logging.INFO)
+_audit_handler = logging.StreamHandler()
+_audit_handler.setFormatter(logging.Formatter("%(asctime)s AUDIT %(message)s"))
+audit_log.addHandler(_audit_handler)
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 VOTE_SIGNING_KEY = os.getenv("VOTE_SIGNING_KEY", secrets.token_hex(32))
@@ -98,9 +106,11 @@ def _verify_token(authorization: str | None) -> str:
     if not settings.battle_token:
         raise HTTPException(500, "BATTLE_TOKEN not configured")
     if not authorization or not authorization.startswith("Bearer "):
+        audit_log.warning("AUTH_FAIL missing_token")
         raise HTTPException(401, "Missing Bearer token")
     token = authorization.removeprefix("Bearer ").strip()
     if token != settings.battle_token:
+        audit_log.warning("AUTH_FAIL invalid_token=%s", token[:8] + "...")
         raise HTTPException(403, "Invalid token")
     return token
 
@@ -111,6 +121,7 @@ def _check_rate_limit(token: str) -> None:
     # Remove entries older than 60s
     _token_requests[token] = [t for t in window if now - t < 60.0]
     if len(_token_requests[token]) >= BATTLE_RATE_LIMIT:
+        audit_log.warning("RATE_LIMIT token=%s count=%d", token[:8] + "...", len(_token_requests[token]))
         raise HTTPException(429, "Rate limit exceeded — max 5 requests per minute")
     _token_requests[token].append(now)
 
@@ -303,6 +314,11 @@ async def submit_round(
         "first_side": first_side,
         "formatted_text": formatted_text,
     }
+
+    audit_log.info(
+        "BATTLE round=%s model=%s source=%s winner=%s",
+        round_id[:8], claw_model or "?", battle_round.source or "?", winner,
+    )
 
 
 @router.get("/feed")
@@ -700,6 +716,7 @@ async def telegram_webhook(request: Request):
     if TELEGRAM_WEBHOOK_SECRET:
         secret_header = request.headers.get("x-telegram-bot-api-secret-token", "")
         if not hmac.compare_digest(secret_header, TELEGRAM_WEBHOOK_SECRET):
+            audit_log.warning("WEBHOOK_FAIL invalid_secret from=%s", request.client.host if request.client else "?")
             raise HTTPException(403, "Invalid webhook secret")
 
     update = await request.json()
@@ -712,20 +729,29 @@ async def telegram_webhook(request: Request):
             await _handle_vote_callback(cb)
             return {"ok": True}
 
-    # Store context from photo messages for the battle API to use
+    # Log inbound messages for audit trail
     msg = update.get("message", {})
-    if msg.get("photo"):
-        from_user = msg.get("from", {})
-        user_id = from_user.get("id")
-        if user_id:
-            username = from_user.get("username", "")
-            name = from_user.get("first_name", "unknown")
-            sender = f"@{username}" if username else name
-            _recent_tg_context[user_id] = {
-                "chat_id": msg.get("chat", {}).get("id", user_id),
-                "sender": sender,
-                "ts": time.time(),
-            }
+    from_user = msg.get("from", {})
+    user_id = from_user.get("id")
+    username = from_user.get("username", "")
+    has_photo = bool(msg.get("photo"))
+    text = msg.get("text", "")
+    if msg:
+        audit_log.info(
+            "TG_MSG user=%s (@%s) photo=%s text=%s",
+            user_id, username, has_photo,
+            repr(text[:80]) if text else "none",
+        )
+
+    # Store context from photo messages for the battle API to use
+    if has_photo and user_id:
+        name = from_user.get("first_name", "unknown")
+        sender = f"@{username}" if username else name
+        _recent_tg_context[user_id] = {
+            "chat_id": msg.get("chat", {}).get("id", user_id),
+            "sender": sender,
+            "ts": time.time(),
+        }
 
     # Forward everything else to OpenClaw
     try:
