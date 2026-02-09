@@ -3,6 +3,16 @@ from __future__ import annotations
 import re
 
 
+def parse_observations(raw: str) -> str:
+    """Extract the Observations line from LLM response. Falls back to full text."""
+    if not raw:
+        return ""
+    match = re.search(r"^Observations\s*:\s*(.+)$", raw.strip(), re.MULTILINE)
+    if match:
+        return match.group(1).strip()
+    return raw.strip()
+
+
 def parse_response(raw: str) -> str:
     """Extract 'yes' or 'no' from LLM response. Returns 'error' if unparseable."""
     if not raw:
