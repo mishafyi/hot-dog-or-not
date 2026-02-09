@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, Clock, Copy, Check, ExternalLink, Trophy, Zap } from "lucide-react";
+import { ChevronDown, Clock, Copy, Check, ExternalLink, Trophy } from "lucide-react";
 import Image from "next/image";
 import { api } from "@/lib/api";
 import type { BattleRound, BattleStats, ArenaLeaderboard } from "@/lib/types";
@@ -53,10 +53,10 @@ function ScoreHeader({ stats }: { stats: BattleStats | null }) {
     );
   }
 
-  const total = stats.nemotron_wins + stats.openclaw_wins + stats.ties;
-  const nemPct = total > 0 ? (stats.nemotron_wins / total) * 100 : 50;
+  const total = stats.nemotron_preferred + stats.openclaw_preferred + stats.ties;
+  const nemPct = total > 0 ? (stats.nemotron_preferred / total) * 100 : 50;
   const tiePct = total > 0 ? (stats.ties / total) * 100 : 0;
-  const clawPct = total > 0 ? (stats.openclaw_wins / total) * 100 : 50;
+  const clawPct = total > 0 ? (stats.openclaw_preferred / total) * 100 : 50;
 
   return (
     <div className="space-y-6">
@@ -75,18 +75,14 @@ function ScoreHeader({ stats }: { stats: BattleStats | null }) {
           </div>
           <motion.div
             className="text-4xl font-extrabold font-mono tabular-nums text-emerald-400"
-            key={stats.nemotron_wins}
+            key={stats.nemotron_preferred}
             initial={{ scale: 1.2, opacity: 0.5 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ type: "spring", stiffness: 300 }}
           >
-            {stats.nemotron_wins}
+            {stats.nemotron_preferred}
           </motion.div>
-          {total > 0 && (
-            <span className="text-xs font-mono tabular-nums text-emerald-400/60">
-              {(stats.nemotron_accuracy * 100).toFixed(0)}% acc
-            </span>
-          )}
+          <span className="text-xs text-emerald-400/60">preferred</span>
         </div>
 
         <div className="flex flex-col items-center justify-center gap-1">
@@ -103,18 +99,14 @@ function ScoreHeader({ stats }: { stats: BattleStats | null }) {
           </div>
           <motion.div
             className="text-4xl font-extrabold font-mono tabular-nums text-orange-400"
-            key={stats.openclaw_wins}
+            key={stats.openclaw_preferred}
             initial={{ scale: 1.2, opacity: 0.5 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ type: "spring", stiffness: 300 }}
           >
-            {stats.openclaw_wins}
+            {stats.openclaw_preferred}
           </motion.div>
-          {total > 0 && (
-            <span className="text-xs font-mono tabular-nums text-orange-400/60">
-              {(stats.openclaw_accuracy * 100).toFixed(0)}% acc
-            </span>
-          )}
+          <span className="text-xs text-orange-400/60">preferred</span>
         </div>
       </div>
 
@@ -144,7 +136,7 @@ function ScoreHeader({ stats }: { stats: BattleStats | null }) {
         </div>
         <div className="text-center">
           <span className="text-xs font-medium text-muted-foreground/60">
-            {stats.total_rounds} {stats.total_rounds === 1 ? "round" : "rounds"} played
+            {stats.total_voted_rounds} voted {stats.total_voted_rounds === 1 ? "round" : "rounds"}
           </span>
         </div>
       </div>
@@ -193,45 +185,26 @@ function VerdictBadge({ answer, side }: { answer: string; side: "nemotron" | "op
 
 /* ── Outcome indicator ──────────────────────────────────────── */
 
-function OutcomeBadge({ winner, consensus }: { winner: string; consensus: string }) {
-  if (winner === "tie" && consensus === "yes") {
-    return (
-      <Badge className="bg-green-500/10 text-green-400 border-green-500/20 gap-1">
-        <Check className="size-3" /> Agree: hot dog
-      </Badge>
-    );
-  }
-  if (winner === "tie" && consensus === "no") {
-    return (
-      <Badge className="bg-green-500/10 text-green-400 border-green-500/20 gap-1">
-        <Check className="size-3" /> Agree: not hot dog
-      </Badge>
-    );
-  }
-  if (winner === "tie") {
-    return (
-      <Badge variant="secondary" className="gap-1">
-        <Check className="size-3" /> Tie
-      </Badge>
-    );
-  }
-  if (winner === "nemotron") {
+function OutcomeBadge({ voteWinner, voteCount }: { voteWinner?: string; voteCount?: number }) {
+  const countLabel = voteCount && voteCount > 1 ? ` (${voteCount} votes)` : "";
+
+  if (voteWinner === "nemotron") {
     return (
       <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 gap-1">
-        <Image src="/logos/NVIDIA.webp" alt="" width={48} height={9} className="h-2.5 w-auto" /> Nemotron wins
+        <Image src="/logos/NVIDIA.webp" alt="" width={48} height={9} className="h-2.5 w-auto" /> Preferred{countLabel}
       </Badge>
     );
   }
-  if (winner === "openclaw") {
+  if (voteWinner === "openclaw") {
     return (
       <Badge className="bg-orange-500/10 text-orange-400 border-orange-500/20 gap-1">
-        🦞 OpenClaw wins
+        🦞 Preferred{countLabel}
       </Badge>
     );
   }
   return (
-    <Badge className="bg-amber-500/10 text-amber-400 border-amber-500/20 gap-1">
-      <Zap className="size-3" /> Disagree
+    <Badge variant="secondary" className="gap-1">
+      <Check className="size-3" /> Tie{countLabel}
     </Badge>
   );
 }
@@ -331,7 +304,7 @@ function RoundCard({ round, index }: { round: BattleRound; index: number }) {
 
         {/* Outcome row */}
         <div className="px-4 py-3 flex items-center justify-center gap-3">
-          <OutcomeBadge winner={round.winner} consensus={round.consensus} />
+          <OutcomeBadge voteWinner={round.vote_winner} voteCount={round.vote_count} />
           {round.claw_latency_ms && round.claw_latency_ms > 0 && (
             <span className="inline-flex items-center gap-1 text-[11px] text-orange-400/50 font-mono tabular-nums">
               <Clock className="size-3" />
@@ -611,18 +584,14 @@ export default function BattlePage() {
   const [rounds, setRounds] = useState<BattleRound[]>([]);
   const [stats, setStats] = useState<BattleStats | null>(null);
   const [loading, setLoading] = useState(true);
-  const lastIndexRef = useRef(0);
 
   const fetchData = useCallback(async () => {
     try {
-      const [newRounds, newStats] = await Promise.all([
-        api.getBattleFeed(lastIndexRef.current),
+      const [allRounds, newStats] = await Promise.all([
+        api.getBattleFeed(),
         api.getBattleStats(),
       ]);
-      if (newRounds.length > 0) {
-        lastIndexRef.current += newRounds.length;
-        setRounds((prev) => [...prev, ...newRounds]);
-      }
+      setRounds(allRounds);
       setStats(newStats);
     } catch {
       // Silently retry on next poll
@@ -649,7 +618,7 @@ export default function BattlePage() {
           <span className="text-orange-400">OpenClaw</span>
         </h1>
         <p className="text-sm text-muted-foreground/70">
-          AI vision battle — who&apos;s better at spotting hot dogs?
+          AI vision battle — voted by users
         </p>
       </div>
 
@@ -698,10 +667,10 @@ export default function BattlePage() {
             <div className="space-y-3">
               <div className="text-4xl">🌭</div>
               <p className="text-muted-foreground font-medium">
-                No rounds yet
+                No voted rounds yet
               </p>
               <p className="text-sm text-muted-foreground/60">
-                Install the skill and send a food photo to start the battle.
+                Rounds appear here after users vote on Telegram.
               </p>
             </div>
           </Card>

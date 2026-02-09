@@ -161,6 +161,8 @@ export interface BattleRound {
   source?: string | null;
   claw_latency_ms?: number | null;
   claw_model?: string | null;
+  vote_winner?: string;
+  vote_count?: number;
 }
 
 export interface ArenaModel {
@@ -178,10 +180,8 @@ export interface ArenaLeaderboard {
 }
 
 export interface BattleStats {
-  nemotron_wins: number;
-  openclaw_wins: number;
+  nemotron_preferred: number;
+  openclaw_preferred: number;
   ties: number;
-  total_rounds: number;
-  nemotron_accuracy: number;
-  openclaw_accuracy: number;
+  total_voted_rounds: number;
 }

@@ -224,6 +224,32 @@ async def submit_round(
     import random
     first_side = random.choice(["nemotron", "openclaw"])
 
+    # Build formatted blind battle text server-side
+    def _label(answer: str) -> str:
+        return "🌭 Hot Dog" if answer == "yes" else "🚫 Not Hot Dog"
+
+    if first_side == "nemotron":
+        r1_answer, r1_reasoning = nemotron_answer, nemotron_reasoning
+        r2_answer, r2_reasoning = claw_answer, claw_reasoning
+    else:
+        r1_answer, r1_reasoning = claw_answer, claw_reasoning
+        r2_answer, r2_reasoning = nemotron_answer, nemotron_reasoning
+
+    if nemotron_answer == claw_answer:
+        verdict = _label(nemotron_answer)
+    else:
+        verdict = "⚔️ Split Decision"
+
+    formatted_text = (
+        f"🌭 Hot Dog Battle — Round #{round_id}\n\n"
+        f"Verdict: {verdict}\n\n"
+        f"📋 Response 1: {_label(r1_answer)}\n"
+        f'"{r1_reasoning}"\n\n'
+        f"📋 Response 2: {_label(r2_answer)}\n"
+        f'"{r2_reasoning}"\n\n'
+        f"Tap a button below to vote!"
+    )
+
     # Auto-fill telegram_chat_id from recent webhook context if not provided
     if not telegram_chat_id:
         now = time.time()
@@ -275,45 +301,110 @@ async def submit_round(
         "winner": winner,
         "image_url": f"/api/battle/images/{image_filename}",
         "first_side": first_side,
+        "formatted_text": formatted_text,
     }
 
 
 @router.get("/feed")
 async def get_feed(last: int = 0):
     rounds = _load_rounds()
-    return rounds[last:]
+    votes = _load_votes()
+
+    # Index votes by round_id
+    round_votes: dict[str, list[BattleVote]] = defaultdict(list)
+    for v in votes:
+        round_votes[v.round_id].append(v)
+
+    # Only return rounds that have at least one vote
+    voted_rounds = []
+    for r in rounds:
+        rv = round_votes.get(r.round_id)
+        if not rv:
+            continue
+
+        # Tally: which model did voters prefer?
+        nem_votes = 0
+        claw_votes = 0
+        tie_votes = 0
+        for v in rv:
+            # Map canonical vote back to nemotron/openclaw
+            if v.voted_for == "tie":
+                tie_votes += 1
+            elif v.voted_for == "model_a":
+                if v.model_a_side == "nemotron":
+                    nem_votes += 1
+                else:
+                    claw_votes += 1
+            elif v.voted_for == "model_b":
+                if v.model_a_side == "nemotron":
+                    claw_votes += 1
+                else:
+                    nem_votes += 1
+
+        if nem_votes > claw_votes:
+            vote_winner = "nemotron"
+        elif claw_votes > nem_votes:
+            vote_winner = "openclaw"
+        else:
+            vote_winner = "tie"
+
+        d = r.model_dump()
+        d["vote_winner"] = vote_winner
+        d["vote_count"] = len(rv)
+        voted_rounds.append(d)
+
+    return voted_rounds[last:]
 
 
 @router.get("/stats")
 async def get_stats():
     rounds = _load_rounds()
-    total = len(rounds)
-    nemotron_wins = 0
-    openclaw_wins = 0
+    votes = _load_votes()
+
+    # Index votes by round_id
+    round_votes: dict[str, list[BattleVote]] = defaultdict(list)
+    for v in votes:
+        round_votes[v.round_id].append(v)
+
+    nemotron_preferred = 0
+    openclaw_preferred = 0
     ties = 0
-    nemotron_agree = 0
-    openclaw_agree = 0
+    total_voted = 0
 
     for r in rounds:
-        if r.winner == "tie":
+        rv = round_votes.get(r.round_id)
+        if not rv:
+            continue
+        total_voted += 1
+
+        nem_votes = 0
+        claw_votes = 0
+        for v in rv:
+            if v.voted_for == "tie":
+                pass
+            elif v.voted_for == "model_a":
+                if v.model_a_side == "nemotron":
+                    nem_votes += 1
+                else:
+                    claw_votes += 1
+            elif v.voted_for == "model_b":
+                if v.model_a_side == "nemotron":
+                    claw_votes += 1
+                else:
+                    nem_votes += 1
+
+        if nem_votes > claw_votes:
+            nemotron_preferred += 1
+        elif claw_votes > nem_votes:
+            openclaw_preferred += 1
+        else:
             ties += 1
-            nemotron_agree += 1
-            openclaw_agree += 1
-        elif r.winner == "nemotron":
-            nemotron_wins += 1
-            nemotron_agree += 1
-        elif r.winner == "openclaw":
-            openclaw_wins += 1
-            openclaw_agree += 1
-        # 'disagree' — neither gets a point
 
     return {
-        "nemotron_wins": nemotron_wins,
-        "openclaw_wins": openclaw_wins,
+        "nemotron_preferred": nemotron_preferred,
+        "openclaw_preferred": openclaw_preferred,
         "ties": ties,
-        "total_rounds": total,
-        "nemotron_accuracy": nemotron_agree / total if total else 0,
-        "openclaw_accuracy": openclaw_agree / total if total else 0,
+        "total_voted_rounds": total_voted,
     }
 
 
@@ -506,7 +597,7 @@ async def vote_telegram(
 async def get_leaderboard():
     votes = _load_votes()
     total = len(votes)
-    min_votes = 20
+    min_votes = 2
 
     if total < min_votes:
         return {
