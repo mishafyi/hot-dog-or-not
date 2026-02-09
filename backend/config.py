@@ -45,5 +45,5 @@ MODELS = [
 PROMPT = """Describe the food in the image in 2-4 sentences. Then decide: is it a hot dog (a sausage served in a bun/roll; any cooking style)?
 
 Output exactly (no thinking, no preamble):
-Observations: <your description>
+Description: <your description>
 Answer: <yes|no>"""
