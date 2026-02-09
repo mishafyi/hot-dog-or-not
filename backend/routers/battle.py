@@ -49,6 +49,8 @@ MODEL_DISPLAY_NAMES: dict[str, str] = {
     "nvidia/nemotron-nano-12b-v2-vl:free": "Nemotron 12B",
     "google/gemini-2.5-flash": "Gemini 2.5 Flash",
     "google/gemini-2.5-flash-preview": "Gemini 2.5 Flash",
+    "anthropic/claude-haiku-4-5-20251001": "Claude Haiku 4.5",
+    "anthropic/claude-opus-4-6": "Claude Opus 4.6",
 }
 
 
