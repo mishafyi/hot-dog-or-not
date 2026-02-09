@@ -257,8 +257,7 @@ async def submit_round(
         f"📋 Response 1: {_label(r1_answer)}\n"
         f'"{r1_reasoning}"\n\n'
         f"📋 Response 2: {_label(r2_answer)}\n"
-        f'"{r2_reasoning}"\n\n'
-        f"Tap a button below to vote!"
+        f'"{r2_reasoning}"'
     )
 
     # Auto-fill telegram_chat_id from recent webhook context if not provided
@@ -275,25 +274,17 @@ async def submit_round(
         if best:
             telegram_chat_id = str(best["chat_id"])
 
-    # Send Telegram vote buttons after a delay so OpenClaw's response arrives first
+    # Send results + vote buttons in one Telegram message (no delay needed)
     if telegram_chat_id and TELEGRAM_BOT_TOKEN:
-        import asyncio
-
-        async def _send_vote_buttons_delayed():
-            await asyncio.sleep(8)  # wait for OpenClaw to send its message
-            buttons = []
-            for label, vote in [("Response 1", "first"), ("Response 2", "second")]:
-                buttons.append({
-                    "text": label,
-                    "callback_data": f"hdv:{round_id}:{vote}:{first_side}",
-                })
-            await _tg_api("sendMessage", {
-                "chat_id": int(telegram_chat_id),
-                "text": "🗳️ Which response do you agree with more?",
-                "reply_markup": {"inline_keyboard": [buttons]},
-            })
-
-        asyncio.create_task(_send_vote_buttons_delayed())
+        buttons = [
+            {"text": "Response 1", "callback_data": f"hdv:{round_id}:first:{first_side}"},
+            {"text": "Response 2", "callback_data": f"hdv:{round_id}:second:{first_side}"},
+        ]
+        await _tg_api("sendMessage", {
+            "chat_id": int(telegram_chat_id),
+            "text": formatted_text,
+            "reply_markup": {"inline_keyboard": [buttons]},
+        })
 
     return {
         "round_id": round_id,
@@ -747,11 +738,19 @@ async def telegram_webhook(request: Request):
     if has_photo and user_id:
         name = from_user.get("first_name", "unknown")
         sender = f"@{username}" if username else name
+        chat_id = msg.get("chat", {}).get("id", user_id)
         _recent_tg_context[user_id] = {
-            "chat_id": msg.get("chat", {}).get("id", user_id),
+            "chat_id": chat_id,
             "sender": sender,
             "ts": time.time(),
         }
+
+        # Send instant "processing" message from backend
+        if TELEGRAM_BOT_TOKEN:
+            await _tg_api("sendMessage", {
+                "chat_id": chat_id,
+                "text": "\U0001f32d Classifying your photo... get ready to vote!",
+            })
 
     # Forward everything else to OpenClaw
     try:
