@@ -18,6 +18,22 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+const MODEL_DISPLAY: Record<string, string> = {
+  "nvidia/nemotron-nano-12b-v2-vl:free": "Nemotron 12B",
+  "google/gemini-2.5-flash": "Gemini 2.5 Flash",
+  "google/gemini-2.5-flash-preview": "Gemini 2.5 Flash",
+  "anthropic/claude-haiku-4-5-20251001": "Claude Haiku 4.5",
+  "anthropic/claude-opus-4-6": "Claude Opus 4.6",
+  "anthropic/claude-sonnet-4-5-20250929": "Claude Sonnet 4.5",
+};
+
+function modelDisplay(id: string | null | undefined): string {
+  if (!id) return "OpenClaw";
+  if (MODEL_DISPLAY[id]) return MODEL_DISPLAY[id];
+  const name = id.split("/").pop()?.replace(":free", "") ?? id;
+  return name.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const seconds = Math.floor(diff / 1000);
@@ -127,7 +143,7 @@ function BestModelHero() {
 
 /* ── Side badge (vote-aware) ───────────────────────────────── */
 
-function SideBadge({ side, voteWinner }: { side: "nemotron" | "openclaw"; voteWinner?: string }) {
+function SideBadge({ side, voteWinner, label }: { side: "nemotron" | "openclaw"; voteWinner?: string; label?: string }) {
   const isWinner = voteWinner === side;
   const isTie = voteWinner === "tie";
   const isLoser = !isWinner && !isTie;
@@ -139,6 +155,8 @@ function SideBadge({ side, voteWinner }: { side: "nemotron" | "openclaw"; voteWi
     : isWinner
       ? "bg-orange-500/20 text-orange-400 border-orange-500/30"
       : "bg-white/5 text-white/40 border-white/10";
+
+  const displayName = side === "nemotron" ? "Nemotron 12B" : (label || "OpenClaw");
 
   return (
     <Tooltip>
@@ -155,13 +173,13 @@ function SideBadge({ side, voteWinner }: { side: "nemotron" | "openclaw"; voteWi
               className={`h-3.5 w-auto flex-shrink-0 ${isLoser ? "opacity-50" : ""}`}
             />
           ) : (
-            <span className="text-base">🦞</span>
+            <span className="text-xs font-semibold">{displayName}</span>
           )}
           {isWinner && <Trophy className="size-3.5" />}
         </div>
       </TooltipTrigger>
       <TooltipContent>
-        {side === "nemotron" ? "Nemotron Nano 12B VL" : "OpenClaw"}
+        {displayName}
         {isWinner ? " — Preferred" : isTie ? " — Tie" : ""}
       </TooltipContent>
     </Tooltip>
@@ -173,9 +191,11 @@ function SideBadge({ side, voteWinner }: { side: "nemotron" | "openclaw"; voteWi
 function ReasoningPanel({
   reasoning,
   side,
+  label,
 }: {
   reasoning: string;
   side: "nemotron" | "openclaw";
+  label?: string;
 }) {
   if (!reasoning) return null;
 
@@ -183,6 +203,8 @@ function ReasoningPanel({
     side === "nemotron"
       ? "border-emerald-500/30 bg-emerald-500/5"
       : "border-orange-500/30 bg-orange-500/5";
+
+  const displayName = side === "nemotron" ? "Nemotron 12B" : (label || "OpenClaw");
 
   return (
     <div className={`rounded-lg border p-3 ${accent}`}>
@@ -195,11 +217,9 @@ function ReasoningPanel({
             height={10}
             className="h-3 w-auto"
           />
-        ) : (
-          <span className="text-sm">🦞</span>
-        )}
+        ) : null}
         <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-          {side === "nemotron" ? "Nemotron Nano 12B VL" : "OpenClaw"}
+          {displayName}
         </span>
       </div>
       <p className="text-sm text-muted-foreground leading-relaxed">
@@ -255,6 +275,7 @@ function RoundDetail({ round, index, onClose }: { round: BattleRound; index: num
   const [showReasoning, setShowReasoning] = useState(false);
   const hasReasoning = round.nemotron_reasoning || round.claw_reasoning;
   const imgSrc = `${API_URL}/api/battle/images/${round.image_filename}`;
+  const clawName = modelDisplay(round.claw_model);
 
   return (
     <motion.div
@@ -296,7 +317,7 @@ function RoundDetail({ round, index, onClose }: { round: BattleRound; index: num
             </div>
             <span className="text-muted-foreground/50 text-xs font-black uppercase tracking-widest">VS</span>
             <div className="flex justify-start">
-              <SideBadge side="openclaw" voteWinner={round.vote_winner} />
+              <SideBadge side="openclaw" voteWinner={round.vote_winner} label={clawName} />
             </div>
           </div>
         </div>
@@ -304,7 +325,7 @@ function RoundDetail({ round, index, onClose }: { round: BattleRound; index: num
         {/* Vote info */}
         <div className="px-4 pb-3 flex items-center justify-center gap-3">
           <span className="text-xs text-muted-foreground/60">
-            {round.vote_winner === "tie" ? "Tied" : round.vote_winner === "nemotron" ? "Nemotron preferred" : "OpenClaw preferred"}
+            {round.vote_winner === "tie" ? "Tied" : round.vote_winner === "nemotron" ? "Nemotron preferred" : `${clawName} preferred`}
             {round.vote_count && round.vote_count > 1 ? ` (${round.vote_count} votes)` : ""}
           </span>
         </div>
@@ -330,7 +351,7 @@ function RoundDetail({ round, index, onClose }: { round: BattleRound; index: num
             >
               <div className="px-4 pb-4 space-y-2 border-t border-border/30 pt-3">
                 <ReasoningPanel reasoning={round.nemotron_reasoning} side="nemotron" />
-                <ReasoningPanel reasoning={round.claw_reasoning} side="openclaw" />
+                <ReasoningPanel reasoning={round.claw_reasoning} side="openclaw" label={clawName} />
               </div>
             </motion.div>
           )}
