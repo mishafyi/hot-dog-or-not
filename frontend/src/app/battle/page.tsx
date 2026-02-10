@@ -350,7 +350,7 @@ const INSTALL_CMDS: Record<PkgManager, string> = {
   bun: "bunx clawhub@latest install hotdog",
 };
 
-function InstallCTA() {
+function JoinBattle() {
   const [copied, setCopied] = useState(false);
   const [pkg, setPkg] = useState<PkgManager>("npm");
   const cmd = INSTALL_CMDS[pkg];
@@ -362,32 +362,28 @@ function InstallCTA() {
   }
 
   return (
-    <div className="group relative overflow-hidden rounded-xl border border-orange-500/20 bg-gradient-to-br from-orange-500/10 via-orange-500/5 to-background p-8 shadow-sm">
-      <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-orange-500/5 blur-3xl transition-all group-hover:bg-orange-500/10" />
-
-      <div className="relative z-10 space-y-5">
-        <div className="space-y-2 text-center">
-          <h2 className="text-xl font-bold">Join the battle</h2>
-          <p className="text-sm text-muted-foreground max-w-md mx-auto">
-            Send a food photo and battle Nemotron in real time.
-          </p>
-        </div>
-
-        <div className="grid md:grid-cols-2 gap-6">
-          {/* Option 1: Telegram bot */}
-          <div className="space-y-3 text-center">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Try it directly</p>
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/* For Humans */}
+      <div className="group relative overflow-hidden rounded-xl border border-yellow-500/20 bg-gradient-to-br from-yellow-500/10 via-yellow-500/5 to-background p-6 shadow-sm">
+        <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-yellow-500/5 blur-3xl" />
+        <div className="relative z-10 space-y-4">
+          <div className="space-y-1 text-center">
+            <div className="text-2xl">👤</div>
+            <h3 className="text-sm font-bold uppercase tracking-wider">For Humans</h3>
+            <p className="text-xs text-muted-foreground/60">Send a food photo on Telegram</p>
+          </div>
+          <div className="flex flex-col items-center gap-3">
             <a
               href="https://t.me/HotDogNotHotDog_Bot"
               target="_blank"
               rel="noopener noreferrer"
-              className="block mx-auto w-fit"
+              className="block"
             >
               <Image
                 src="/telegram-qr.png"
                 alt="@HotDogNotHotDog_Bot on Telegram"
-                width={180}
-                height={220}
+                width={150}
+                height={185}
                 className="rounded-xl"
               />
             </a>
@@ -395,16 +391,24 @@ function InstallCTA() {
               href="https://t.me/HotDogNotHotDog_Bot"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-sm font-mono text-orange-400 hover:text-orange-300 transition-colors"
+              className="inline-flex items-center gap-1.5 text-sm font-mono text-yellow-400 hover:text-yellow-300 transition-colors"
             >
               @HotDogNotHotDog_Bot <ExternalLink className="size-3" />
             </a>
-            <p className="text-xs text-muted-foreground/60">Upload a photo directly on Telegram</p>
           </div>
+        </div>
+      </div>
 
-          {/* Option 2: OpenClaw skill */}
-          <div className="space-y-3 text-center">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">For OpenClaw users</p>
+      {/* For Claw Bots */}
+      <div className="group relative overflow-hidden rounded-xl border border-cyan-500/20 bg-gradient-to-br from-cyan-500/10 via-cyan-500/5 to-background p-6 shadow-sm">
+        <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-cyan-500/5 blur-3xl" />
+        <div className="relative z-10 space-y-4">
+          <div className="space-y-1 text-center">
+            <div className="text-2xl">🤖</div>
+            <h3 className="text-sm font-bold uppercase tracking-wider">For Claw Bots</h3>
+            <p className="text-xs text-muted-foreground/60">Install the skill on your OpenClaw agent</p>
+          </div>
+          <div className="space-y-3 flex flex-col items-center">
             <div className="flex items-center justify-center gap-1">
               {PKG_MANAGERS.map((pm) => (
                 <Button
@@ -414,38 +418,35 @@ function InstallCTA() {
                   onClick={() => setPkg(pm)}
                   className={`text-xs font-mono px-3 h-7 rounded-full ${
                     pkg === pm
-                      ? "bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 border border-orange-500/30"
-                      : "text-muted-foreground/60 hover:text-orange-400"
+                      ? "bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 border border-cyan-500/30"
+                      : "text-muted-foreground/60 hover:text-cyan-400"
                   }`}
                 >
                   {pm}
                 </Button>
               ))}
             </div>
-            <div className="flex items-center justify-center">
-              <div className="flex items-center gap-0 rounded-lg border border-orange-500/20 bg-card overflow-hidden">
-                <code className="px-4 py-2.5 text-sm font-mono text-orange-400">
-                  {cmd}
-                </code>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={handleCopy}
-                  className="rounded-none border-l border-orange-500/20 h-full px-3 text-muted-foreground hover:text-orange-400"
-                >
-                  {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
-                </Button>
-              </div>
+            <div className="flex items-center gap-0 rounded-lg border border-cyan-500/20 bg-card overflow-hidden">
+              <code className="px-4 py-2.5 text-sm font-mono text-cyan-400">
+                {cmd}
+              </code>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={handleCopy}
+                className="rounded-none border-l border-cyan-500/20 h-full px-3 text-muted-foreground hover:text-cyan-400"
+              >
+                {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+              </Button>
             </div>
             <a
               href="https://clawhub.ai/skills/hotdog"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-xs text-muted-foreground/50 hover:text-orange-400 transition-colors"
+              className="inline-flex items-center gap-1 text-xs text-muted-foreground/50 hover:text-cyan-400 transition-colors"
             >
               Browse on ClawHub <ExternalLink className="size-3" />
             </a>
-            <p className="text-xs text-muted-foreground/60">Install the skill on your OpenClaw bot</p>
           </div>
         </div>
       </div>
@@ -645,6 +646,9 @@ export default function BattlePage() {
         </div>
       </div>
 
+      {/* Join the battle */}
+      <JoinBattle />
+
       {/* Split leaderboards */}
       <SplitLeaderboards />
 
@@ -707,8 +711,6 @@ export default function BattlePage() {
         </div>
       )}
 
-      {/* CTA */}
-      <InstallCTA />
     </div>
   );
 }
