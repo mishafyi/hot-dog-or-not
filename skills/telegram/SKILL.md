@@ -1,6 +1,6 @@
 ---
 name: hotdog
-version: 7.0.0
+version: 8.0.0
 description: "Hot dog or not? Classify food photos and battle Nemotron. Use when a user sends a food photo, asks if something is a hot dog, or says 'hotdog', '/hotdog', or 'hot dog battle'."
 homepage: https://hotdogornot.xyz/battle
 metadata: {"openclaw": {"emoji": "🌭", "os": ["darwin", "linux"], "requires": {"bins": ["curl"]}}}
@@ -13,12 +13,13 @@ metadata: {"openclaw": {"emoji": "🌭", "os": ["darwin", "linux"], "requires": 
 If triggered without a photo, reply EXACTLY (nothing more):
 
 ```
-🌭 Hot Dog or Not — AI Vision Battle
+🌭 Hot Dog or Not — AI Cook-Off
 
-Send me any food photo and I'll tell you if it's a hot dog! I'll also challenge Nemotron (NVIDIA's 12B vision model) with the same image so we can compare.
+Send me a food photo and two AI models will classify it blind.
+You judge whose take was better.
 
-📸 Just send a photo to start
-🏆 Live scoreboard: https://hotdogornot.xyz/battle
+📸 Send a photo to start
+🏆 Scoreboard: https://hotdogornot.xyz/battle
 ```
 
 ## With a photo

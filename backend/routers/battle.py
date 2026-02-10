@@ -247,14 +247,14 @@ async def submit_round(
     if nemotron_answer == claw_answer:
         verdict = _label(nemotron_answer)
     else:
-        verdict = "⚔️ Split Decision"
+        verdict = "⚔️ Models disagree"
 
     formatted_text = (
-        f"🌭 Hot Dog Battle — Round #{round_id}\n\n"
+        f"🌭 Cook-Off — Round #{round_id}\n\n"
         f"Verdict: {verdict}\n\n"
-        f"📋 Response 1: {_label(r1_answer)}\n"
+        f"🅰️ Model A: {_label(r1_answer)}\n"
         f'"{r1_reasoning}"\n\n'
-        f"📋 Response 2: {_label(r2_answer)}\n"
+        f"🅱️ Model B: {_label(r2_answer)}\n"
         f'"{r2_reasoning}"'
     )
 
@@ -275,8 +275,8 @@ async def submit_round(
     # Send results + vote buttons in one Telegram message (no delay needed)
     if telegram_chat_id and TELEGRAM_BOT_TOKEN:
         buttons = [
-            {"text": "Response 1", "callback_data": f"hdv:{round_id}:first:{first_side}"},
-            {"text": "Response 2", "callback_data": f"hdv:{round_id}:second:{first_side}"},
+            {"text": "Model A", "callback_data": f"hdv:{round_id}:first:{first_side}"},
+            {"text": "Model B", "callback_data": f"hdv:{round_id}:second:{first_side}"},
         ]
         await _tg_api("sendMessage", {
             "chat_id": int(telegram_chat_id),
@@ -558,9 +558,9 @@ async def vote_telegram(
         try:
             reveal = (
                 f"🎭 Reveal:\n"
-                f"• Response 1 was {_model_display(model_a)}\n"
-                f"• Response 2 was {_model_display(model_b)}\n\n"
-                f"Thanks for voting! 🏆 Live rankings: https://hotdogornot.xyz/battle"
+                f"• Model A was {_model_display(model_a)}\n"
+                f"• Model B was {_model_display(model_b)}\n\n"
+                f"🏆 Scoreboard: https://hotdogornot.xyz/battle"
             )
             async with httpx.AsyncClient() as http:
                 await http.post(
@@ -573,8 +573,8 @@ async def vote_telegram(
     return HTMLResponse(
         "<html><body style='font-family:system-ui;text-align:center;padding:60px'>"
         f"<h1>Vote recorded!</h1>"
-        f"<p>Response 1 was <b>{_model_display(model_a)}</b></p>"
-        f"<p>Response 2 was <b>{_model_display(model_b)}</b></p>"
+        f"<p>Model A was <b>{_model_display(model_a)}</b></p>"
+        f"<p>Model B was <b>{_model_display(model_b)}</b></p>"
         f"<a href='https://hotdogornot.xyz/battle'>View rankings</a>"
         "</body></html>"
     )
@@ -732,7 +732,7 @@ async def telegram_webhook(request: Request):
         if TELEGRAM_BOT_TOKEN:
             await _tg_api("sendMessage", {
                 "chat_id": chat_id,
-                "text": "\U0001f32d Classifying your photo... get ready to vote!",
+                "text": "\U0001f32d Two AI models are looking at your photo... get ready to judge!",
             })
 
     # Forward everything else to OpenClaw
@@ -829,11 +829,11 @@ async def _handle_vote_callback(cb: dict):
 
         # Edit the original vote message to show the reveal
         reveal = (
-            f"🗳️ Vote recorded — thanks!\n\n"
-            f"🔓 Reveal:\n"
-            f"• Response 1 was *{_model_display(model_a)}*\n"
-            f"• Response 2 was *{_model_display(model_b)}*\n\n"
-            f"🏆 [Live rankings](https://hotdogornot.xyz/battle)"
+            f"🗳️ Verdict recorded!\n\n"
+            f"🎭 Reveal:\n"
+            f"• Model A was *{_model_display(model_a)}*\n"
+            f"• Model B was *{_model_display(model_b)}*\n\n"
+            f"🏆 [Scoreboard](https://hotdogornot.xyz/battle)"
         )
         if chat_id and message_id:
             await _tg_api("editMessageText", {

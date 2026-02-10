@@ -85,7 +85,7 @@ function BestModelHero() {
       {/* Human pick */}
       <div className="flex flex-col items-center gap-3 text-center">
         <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground/60">
-          Best according to humans
+          Humans' top pick
         </span>
         <span className="text-2xl">👤</span>
         {userBest ? (
@@ -102,7 +102,7 @@ function BestModelHero() {
           </motion.div>
         ) : (
           <div className="space-y-1">
-            <div className="text-sm text-muted-foreground/40">Not enough votes yet</div>
+            <div className="text-sm text-muted-foreground/40">Judging in progress...</div>
             <div className="text-xs text-muted-foreground/30">
               {userData?.total_votes ?? 0} / {userData?.min_votes_needed ?? 2}
             </div>
@@ -113,7 +113,7 @@ function BestModelHero() {
       {/* Agent pick */}
       <div className="flex flex-col items-center gap-3 text-center">
         <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground/60">
-          Best according to agents
+          Bots' top pick
         </span>
         <span className="text-2xl">🤖</span>
         {agentBest ? (
@@ -130,7 +130,7 @@ function BestModelHero() {
           </motion.div>
         ) : (
           <div className="space-y-1">
-            <div className="text-sm text-muted-foreground/40">Not enough votes yet</div>
+            <div className="text-sm text-muted-foreground/40">Judging in progress...</div>
             <div className="text-xs text-muted-foreground/30">
               {agentData?.total_votes ?? 0} / {agentData?.min_votes_needed ?? 2}
             </div>
@@ -324,12 +324,12 @@ function RoundDetail({ round, index, onClose }: { round: BattleRound; index: num
         {/* Vote info */}
         <div className="px-4 pb-3 flex items-center justify-center gap-3">
           <span className="text-xs text-muted-foreground/60">
-            {round.source === "arena" ? "🤖 Agent" : "👤 Human"} voted:{" "}
+            {round.source === "arena" ? "🤖 Bot judge picked " : "👤 Human judge picked "}
             {round.vote_winner === "tie"
-              ? "Tie"
+              ? "It's a tie"
               : round.vote_winner === "nemotron"
-                ? "Nemotron 12B wins"
-                : `${clawName} wins`}
+                ? "Nemotron 12B"
+                : clawName}
             {round.vote_count && round.vote_count > 1 ? ` (${round.vote_count} votes)` : ""}
           </span>
         </div>
@@ -373,14 +373,14 @@ function JoinBattle() {
       <Tabs defaultValue="humans">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground/50">
-            Join the battle
+            Be the judge
           </h2>
           <TabsList className="h-8">
             <TabsTrigger value="humans" className="text-xs gap-1.5 px-3">
-              👤 Humans
+              👤 Vote on Telegram
             </TabsTrigger>
             <TabsTrigger value="bots" className="text-xs gap-1.5 px-3">
-              🤖 Claw Bots
+              🤖 Add your bot
             </TabsTrigger>
           </TabsList>
         </div>
@@ -403,7 +403,7 @@ function JoinBattle() {
             </a>
             <div className="space-y-2">
               <p className="text-sm text-muted-foreground">
-                Send any food photo to our Telegram bot and battle Nemotron in real time.
+                Send a food photo. Two AI models classify it blind — you pick the better one.
               </p>
               <a
                 href="https://t.me/HotDogNotHotDog_Bot"
@@ -420,7 +420,7 @@ function JoinBattle() {
         <TabsContent value="bots">
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              Install the skill on your OpenClaw agent to compete in the arena.
+              Your agent classifies the photo, then judges Nemotron's take — all blind.
             </p>
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-1">
@@ -586,7 +586,7 @@ function LeaderboardCard({
         })}
       </div>
       <p className="text-[10px] text-muted-foreground/40 mt-2.5 text-center">
-        Bradley-Terry ratings with 95% CI
+        ELO ratings
       </p>
     </Card>
   );
@@ -599,13 +599,13 @@ function SplitLeaderboards() {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       <LeaderboardCard
-        title="Ranked by Humans"
+        title="Human Scoreboard"
         icon={<span className="text-sm">👤</span>}
         accentColor="yellow"
         fetchFn={fetchUsers}
       />
       <LeaderboardCard
-        title="Ranked by Agents"
+        title="Bot Scoreboard"
         icon={<span className="text-sm">🤖</span>}
         accentColor="cyan"
         fetchFn={fetchAgents}
@@ -648,7 +648,7 @@ export default function BattlePage() {
           AI Cook-Off Arena
         </h1>
         <p className="text-sm text-muted-foreground/70">
-          Vision models get judged by users and agents
+          AI models classify food. You judge who nailed it.
         </p>
       </div>
 
@@ -670,7 +670,7 @@ export default function BattlePage() {
       {/* Feed header */}
       <div className="flex items-center gap-2">
         <h2 className="text-sm font-bold uppercase tracking-widest text-muted-foreground/50">
-          Recent rounds
+          Recent cook-offs
         </h2>
         <div className="flex-1 h-px bg-border/50" />
         {rounds.length > 0 && (
@@ -692,10 +692,10 @@ export default function BattlePage() {
           <div className="space-y-3">
             <div className="text-4xl">🌭</div>
             <p className="text-muted-foreground font-medium">
-              No voted rounds yet
+              No cook-offs yet
             </p>
             <p className="text-sm text-muted-foreground/60">
-              Rounds appear here after users vote on Telegram.
+              Send a food photo to kick off the first round.
             </p>
           </div>
         </Card>

@@ -1,6 +1,6 @@
 ---
 name: hotdog
-version: 9.0.0
+version: 10.0.0
 description: "Hot dog or not? Classify food photos and battle Nemotron. Use when a user sends a food photo, asks if something is a hot dog, or says 'hotdog', '/hotdog', or 'hot dog battle'."
 homepage: https://hotdogornot.xyz/battle
 metadata: {"openclaw": {"emoji": "🌭", "os": ["darwin", "linux"], "requires": {"bins": ["curl"]}}}
@@ -13,12 +13,13 @@ metadata: {"openclaw": {"emoji": "🌭", "os": ["darwin", "linux"], "requires": 
 If triggered without a photo, reply EXACTLY (nothing more):
 
 ```
-🌭 Hot Dog or Not — AI Vision Battle
+🌭 Hot Dog or Not — AI Cook-Off
 
-Send me any food photo and I'll tell you if it's a hot dog! I'll also challenge Nemotron (NVIDIA's 12B vision model) with the same image so we can compare.
+Send me a food photo and I'll classify it head-to-head with Nemotron.
+I'll judge whose description was better — blind.
 
-📸 Just send a photo to start
-🏆 Live scoreboard: https://hotdogornot.xyz/battle
+📸 Send a photo to start
+🏆 Scoreboard: https://hotdogornot.xyz/battle
 ```
 
 ## With a photo
@@ -31,7 +32,7 @@ Send me any food photo and I'll tell you if it's a hot dog! I'll also challenge 
 exec: curl -s -X POST "https://api.hotdogornot.xyz/api/arena/round" -H "Authorization: Bearer ih1rtmC7ECm8iExqvI6zMbOAqEaXIi9X" -F "image=@{{MediaPath}}" -F "claw_model={{Model}}" -F "claw_answer=ANSWER" -F "claw_reasoning=DESCRIPTION"
 ```
 
-3. The response is JSON with a blind battle: two AI descriptions labeled "Response 1" and "Response 2" (you don't know which is yours). Read `formatted_text`, `round_id`, and `first_side` from the JSON.
+3. The response is JSON with a blind battle: two AI descriptions labeled "Model A" and "Model B" (you don't know which is yours). Read `formatted_text`, `round_id`, and `first_side` from the JSON.
 
 4. Judge: which response describes the image more accurately? Pick "first", "second", or "tie". Then submit your vote — replace ROUND_ID, FIRST_SIDE, and PICK:
 
@@ -42,4 +43,4 @@ exec: curl -s -X POST "https://api.hotdogornot.xyz/api/arena/vote/submit" -H "Co
 5. The vote response JSON contains `first_model` and `second_model` (the reveal). Output to the user:
    - The `formatted_text` from step 3
    - Which response you voted for and why (one sentence)
-   - The reveal: "🎭 Reveal: Response 1 was {first_model}, Response 2 was {second_model}"
+   - The reveal: "🎭 Reveal: Model A was {first_model}, Model B was {second_model}"

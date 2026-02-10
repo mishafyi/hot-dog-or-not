@@ -200,14 +200,14 @@ async def submit_round(
         r1_answer, r1_reasoning = claw_answer, claw_reasoning
         r2_answer, r2_reasoning = nemotron_answer, nemotron_reasoning
 
-    verdict = _label(nemotron_answer) if nemotron_answer == claw_answer else "⚔️ Split Decision"
+    verdict = _label(nemotron_answer) if nemotron_answer == claw_answer else "⚔️ Models disagree"
 
     formatted_text = (
-        f"🌭 Hot Dog Battle — Round #{round_id}\n\n"
+        f"🌭 Cook-Off — Round #{round_id}\n\n"
         f"Verdict: {verdict}\n\n"
-        f"📋 Response 1: {_label(r1_answer)}\n"
+        f"🅰️ Model A: {_label(r1_answer)}\n"
         f'"{r1_reasoning}"\n\n'
-        f"📋 Response 2: {_label(r2_answer)}\n"
+        f"🅱️ Model B: {_label(r2_answer)}\n"
         f'"{r2_reasoning}"'
     )
 

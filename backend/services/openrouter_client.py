@@ -80,9 +80,9 @@ class OpenRouterClient:
                     json=payload,
                     headers=headers,
                 )
-            except httpx.TimeoutException:
+            except httpx.TransportError:
                 latency_ms = (time.monotonic() - start) * 1000
-                last_error = f"Timeout after {latency_ms:.0f}ms (attempt {attempt + 1})"
+                last_error = f"Transport error after {latency_ms:.0f}ms (attempt {attempt + 1})"
                 logger.warning("%s model=%s", last_error, model_id)
                 if attempt < len(retries):
                     await asyncio.sleep(retries[attempt])
@@ -91,7 +91,7 @@ class OpenRouterClient:
 
             latency_ms = (time.monotonic() - start) * 1000
 
-            if resp.status_code in (429, 402, 502, 503):
+            if resp.status_code in (408, 429, 402, 502, 503):
                 last_error = f"{resp.status_code} (attempt {attempt + 1})"
                 logger.warning("%s model=%s body=%s", last_error, model_id, resp.text[:200])
                 if attempt < len(retries):
