@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, Clock, Copy, Check, ExternalLink, Trophy } from "lucide-react";
 import Image from "next/image";
 import { api } from "@/lib/api";
-import type { BattleRound, BattleStats, ArenaLeaderboard } from "@/lib/types";
+import type { BattleRound, ArenaLeaderboard } from "@/lib/types";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -36,108 +36,89 @@ function maskSource(source: string): string {
   });
 }
 
-/* ── Scoreboard ─────────────────────────────────────────────── */
+/* ── Best Model Hero ────────────────────────────────────────── */
 
-function ScoreHeader({ stats }: { stats: BattleStats | null }) {
-  if (!stats) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <Skeleton className="h-20 w-28" />
-          <Skeleton className="h-12 w-16" />
-          <Skeleton className="h-20 w-28" />
-        </div>
-        <Skeleton className="h-4 w-full rounded-full" />
-      </div>
-    );
-  }
+function BestModelHero() {
+  const [userData, setUserData] = useState<ArenaLeaderboard | null>(null);
+  const [agentData, setAgentData] = useState<ArenaLeaderboard | null>(null);
 
-  const total = stats.nemotron_preferred + stats.openclaw_preferred + stats.ties;
-  const nemPct = total > 0 ? (stats.nemotron_preferred / total) * 100 : 50;
-  const tiePct = total > 0 ? (stats.ties / total) * 100 : 0;
-  const clawPct = total > 0 ? (stats.openclaw_preferred / total) * 100 : 50;
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const [u, a] = await Promise.all([
+          api.getUserLeaderboard(),
+          api.getAgentLeaderboard(),
+        ]);
+        setUserData(u);
+        setAgentData(a);
+      } catch {
+        // ignore
+      }
+    };
+    load();
+    const interval = setInterval(load, 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const userBest = userData?.models?.[0];
+  const agentBest = agentData?.models?.[0];
 
   return (
-    <div className="space-y-6">
-      {/* Score numbers */}
-      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
-        <div className="flex flex-col items-center gap-2">
-          <div className="flex items-center gap-2">
-            <Image
-              src="/logos/NVIDIA.webp"
-              alt="NVIDIA"
-              width={80}
-              height={15}
-              className="h-4 w-auto flex-shrink-0"
-            />
-            <span className="text-sm font-semibold text-muted-foreground">Nemotron</span>
-          </div>
+    <div className="grid grid-cols-2 gap-4">
+      {/* Human pick */}
+      <div className="flex flex-col items-center gap-3 text-center">
+        <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground/60">
+          Best according to humans
+        </span>
+        <span className="text-2xl">👤</span>
+        {userBest ? (
           <motion.div
-            className="text-4xl font-extrabold font-mono tabular-nums text-emerald-400"
-            key={stats.nemotron_preferred}
-            initial={{ scale: 1.2, opacity: 0.5 }}
+            key={userBest.display}
+            initial={{ scale: 1.1, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            transition={{ type: "spring", stiffness: 300 }}
+            className="space-y-1"
           >
-            {stats.nemotron_preferred}
+            <div className="text-lg font-bold text-yellow-400">{userBest.display}</div>
+            <div className="text-xs font-mono text-muted-foreground/50">
+              {userBest.rating} ELO &middot; {userData!.total_votes} votes
+            </div>
           </motion.div>
-          <span className="text-xs text-emerald-400/60">preferred</span>
-        </div>
-
-        <div className="flex flex-col items-center justify-center gap-1">
-          <div className="text-4xl font-extrabold font-mono tabular-nums text-muted-foreground">
-            {stats.ties}
+        ) : (
+          <div className="space-y-1">
+            <div className="text-sm text-muted-foreground/40">Not enough votes yet</div>
+            <div className="text-xs text-muted-foreground/30">
+              {userData?.total_votes ?? 0} / {userData?.min_votes_needed ?? 2}
+            </div>
           </div>
-          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">ties</span>
-        </div>
-
-        <div className="flex flex-col items-center gap-2">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold text-muted-foreground">OpenClaw</span>
-            <span className="text-lg">🦞</span>
-          </div>
-          <motion.div
-            className="text-4xl font-extrabold font-mono tabular-nums text-orange-400"
-            key={stats.openclaw_preferred}
-            initial={{ scale: 1.2, opacity: 0.5 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ type: "spring", stiffness: 300 }}
-          >
-            {stats.openclaw_preferred}
-          </motion.div>
-          <span className="text-xs text-orange-400/60">preferred</span>
-        </div>
+        )}
       </div>
 
-      {/* Score bar */}
-      <div className="space-y-2">
-        <div className="h-2.5 rounded-full overflow-hidden bg-muted/50 flex">
+      {/* Agent pick */}
+      <div className="flex flex-col items-center gap-3 text-center">
+        <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground/60">
+          Best according to agents
+        </span>
+        <span className="text-2xl">🤖</span>
+        {agentBest ? (
           <motion.div
-            className="bg-gradient-to-r from-emerald-500 to-emerald-400 h-full rounded-l-full"
-            initial={{ width: "50%" }}
-            animate={{ width: `${nemPct}%` }}
-            transition={{ duration: 0.6, ease: "easeOut" }}
-          />
-          {tiePct > 0 && (
-            <motion.div
-              className="bg-muted-foreground/20 h-full"
-              initial={{ width: "0%" }}
-              animate={{ width: `${tiePct}%` }}
-              transition={{ duration: 0.6, ease: "easeOut" }}
-            />
-          )}
-          <motion.div
-            className="bg-gradient-to-r from-orange-400 to-orange-500 h-full rounded-r-full"
-            initial={{ width: "50%" }}
-            animate={{ width: `${clawPct}%` }}
-            transition={{ duration: 0.6, ease: "easeOut" }}
-          />
-        </div>
-        <div className="text-center">
-          <span className="text-xs font-medium text-muted-foreground/60">
-            {stats.total_voted_rounds} voted {stats.total_voted_rounds === 1 ? "round" : "rounds"}
-          </span>
-        </div>
+            key={agentBest.display}
+            initial={{ scale: 1.1, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="space-y-1"
+          >
+            <div className="text-lg font-bold text-cyan-400">{agentBest.display}</div>
+            <div className="text-xs font-mono text-muted-foreground/50">
+              {agentBest.rating} ELO &middot; {agentData!.total_votes} votes
+            </div>
+          </motion.div>
+        ) : (
+          <div className="space-y-1">
+            <div className="text-sm text-muted-foreground/40">Not enough votes yet</div>
+            <div className="text-xs text-muted-foreground/30">
+              {agentData?.total_votes ?? 0} / {agentData?.min_votes_needed ?? 2}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -621,18 +602,13 @@ function SplitLeaderboards() {
 
 export default function BattlePage() {
   const [rounds, setRounds] = useState<BattleRound[]>([]);
-  const [stats, setStats] = useState<BattleStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedRoundId, setSelectedRoundId] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     try {
-      const [allRounds, newStats] = await Promise.all([
-        api.getBattleFeed(),
-        api.getBattleStats(),
-      ]);
+      const allRounds = await api.getBattleFeed();
       setRounds(allRounds);
-      setStats(newStats);
     } catch {
       // Silently retry on next poll
     } finally {
@@ -660,12 +636,12 @@ export default function BattlePage() {
         </p>
       </div>
 
-      {/* Scoreboard */}
-      <div className="group relative overflow-hidden rounded-xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/5 via-background to-orange-500/5 p-8 shadow-sm">
-        <div className="pointer-events-none absolute -left-20 -top-20 h-64 w-64 rounded-full bg-emerald-500/5 blur-3xl" />
-        <div className="pointer-events-none absolute -right-20 -bottom-20 h-64 w-64 rounded-full bg-orange-500/5 blur-3xl" />
+      {/* Best model hero */}
+      <div className="group relative overflow-hidden rounded-xl border border-yellow-500/20 bg-gradient-to-br from-yellow-500/5 via-background to-cyan-500/5 p-8 shadow-sm">
+        <div className="pointer-events-none absolute -left-20 -top-20 h-64 w-64 rounded-full bg-yellow-500/5 blur-3xl" />
+        <div className="pointer-events-none absolute -right-20 -bottom-20 h-64 w-64 rounded-full bg-cyan-500/5 blur-3xl" />
         <div className="relative z-10">
-          <ScoreHeader stats={stats} />
+          <BestModelHero />
         </div>
       </div>
 
