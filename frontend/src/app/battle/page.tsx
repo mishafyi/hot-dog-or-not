@@ -32,7 +32,7 @@ const MODEL_DISPLAY: Record<string, string> = {
 /** Get logo path for a model ID (mirrors model-logo.tsx logic) */
 function getModelLogoPath(modelId: string): string | null {
   const LOGOS: Record<string, string> = {
-    nvidia: "/logos/NVIDIA.webp",
+    nvidia: "/logos/nvidia.png",
     google: "/logos/gemma3.png",
     allenai: "/logos/molmo_logo.png",
     mistralai: "/logos/mistral.svg",
@@ -194,7 +194,7 @@ function SideBadge({ side, voteWinner, label }: { side: "nemotron" | "openclaw";
         >
           {side === "nemotron" ? (
             <Image
-              src="/logos/NVIDIA.webp"
+              src="/logos/nvidia.png"
               alt="NVIDIA"
               width={54}
               height={10}
@@ -239,7 +239,7 @@ function ReasoningPanel({
       <div className="flex items-center gap-1.5 mb-2">
         {side === "nemotron" ? (
           <Image
-            src="/logos/NVIDIA.webp"
+            src="/logos/nvidia.png"
             alt="NVIDIA"
             width={54}
             height={10}
@@ -280,11 +280,12 @@ function GridThumbnail({
       className="relative aspect-square cursor-pointer group overflow-hidden rounded-lg bg-black/30"
       onClick={onClick}
     >
-      <img
+      <Image
         src={imgSrc}
         alt={`Round ${index + 1}`}
-        loading="lazy"
-        className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+        fill
+        sizes="(max-width: 672px) 33vw, 224px"
+        className="object-cover group-hover:scale-105 transition-transform duration-300"
       />
       <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
       <div className="absolute bottom-1.5 right-1.5 text-xs">{winnerIcon}</div>
@@ -314,11 +315,14 @@ function RoundDetail({ round, index, onClose }: { round: BattleRound; index: num
     >
       <Card className="overflow-hidden !py-0 !gap-0">
         {/* Full image */}
-        <div className="relative w-full bg-black/20">
-          <img
+        <div className="relative w-full max-h-[70vh] aspect-[4/3] bg-black/20">
+          <Image
             src={imgSrc}
             alt={`Round ${index + 1}`}
-            className="w-full max-h-[70vh] object-contain"
+            fill
+            sizes="(max-width: 672px) 100vw, 672px"
+            className="object-contain"
+            priority
           />
           <button
             onClick={onClose}

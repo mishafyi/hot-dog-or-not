@@ -16,8 +16,9 @@
 
 <p align="center">
   <a href="https://hotdogornot.xyz"><strong>hotdogornot.xyz</strong></a> &nbsp;|&nbsp;
+  <a href="https://hotdogornot.xyz/battle">Live Arena</a> &nbsp;|&nbsp;
   <a href="https://t.me/HotDogNotHotDog_Bot">Telegram Bot</a> &nbsp;|&nbsp;
-  <a href="https://hotdogornot.xyz/battle">Live Battle Arena</a>
+  <a href="https://clawhub.ai/skills/hotdog">ClawHub Skill</a>
 </p>
 
 ---
@@ -32,13 +33,17 @@ Each model answers and explains its reasoning. Compare traces side by side to se
 Run multiple vision models against the same image set. Compare accuracy, latency, and reasoning traces side by side.
 
 ### Battle Arena
-Send a food photo and two AI models classify it independently. Vote on which response is better in a blind evaluation — models are revealed after you vote. Rankings use the Bradley-Terry model.
+Send a food photo and two AI models classify it independently in a blind cook-off. You (or your bot) judge which response is better — model identities are revealed after the vote. Rankings use the [Bradley-Terry model](https://github.com/lmarena/arena-rank) with separate leaderboards for human and bot judges. The arena page shows brand logos (NVIDIA, Anthropic, Google) and ELO ratings for top-ranked models.
 
 ### Telegram Bot
-Send a photo to [@HotDogNotHotDog_Bot](https://t.me/HotDogNotHotDog_Bot) on Telegram. Powered by Claude Haiku 4.5 via [OpenClaw](https://openclaw.com) — classifies your image and battles Nemotron in real time. Returns the verdict and battle result (no full reasoning trace).
+Send a photo to [@HotDogNotHotDog_Bot](https://t.me/HotDogNotHotDog_Bot) on Telegram. Powered by Claude Haiku 4.5 via [OpenClaw](https://openclaw.com) — classifies your image, battles NVIDIA Nemotron 12B, and sends you both verdicts with blind labels. Vote buttons appear a few seconds later so you pick a winner before knowing which model is which.
 
 ### OpenClaw Skill
-Install the [hotdog skill](https://clawhub.ai/skills/hotdog) on any OpenClaw bot to add hot dog classification and battle capabilities.
+Install the [hotdog skill](https://clawhub.ai/skills/hotdog) on any OpenClaw-powered agent to add hot dog classification and battle capabilities. Your agent classifies the photo, then judges Nemotron's take — all blind.
+
+```bash
+npx clawhub@latest install hotdog
+```
 
 ## Why This Exists
 
@@ -107,6 +112,8 @@ Backend at `localhost:8000`, frontend at `localhost:3000`.
 
 ## Models
 
+### Benchmark Models
+
 All benchmark models run on [OpenRouter](https://openrouter.ai) free tier. Toggle on/off before each run.
 
 | Model | Provider | Params |
@@ -118,13 +125,18 @@ All benchmark models run on [OpenRouter](https://openrouter.ai) free tier. Toggl
 
 Add your own in `backend/config.py`. Any free vision model on OpenRouter works.
 
+### Battle Models
+
+The arena always uses NVIDIA Nemotron 12B as the baseline. The challenger is whichever model powers the OpenClaw agent — currently Claude Haiku 4.5 on the public Telegram bot, but any model can compete via the ClawHub skill.
+
 ## Battle API
 
 The battle system pits two models against each other on user-submitted photos:
 
 - **POST** `/api/battle/round` — submit a photo with one model's answer, get Nemotron's independent classification back
 - **POST** `/api/battle/vote/submit` — submit a blind vote for the better response
-- **GET** `/api/battle/leaderboard` — Bradley-Terry model rankings based on votes
+- **GET** `/api/battle/leaderboard?voter_type=user` — human-voted Bradley-Terry rankings
+- **GET** `/api/battle/leaderboard?voter_type=arena` — bot-voted Bradley-Terry rankings
 
 Rate limited to 5 requests/minute per token. Images must be JPG/PNG/WebP/GIF, max 10MB.
 
@@ -144,7 +156,7 @@ Each image goes to the model with:
 Look at the image. Is it a hot dog (food: a sausage served in a bun/roll; any cooking style)?
 
 Output exactly:
-Observations: <brief description of what is visible>
+Description: <brief description of what is visible>
 Answer: <yes|no>
 ```
 
@@ -159,11 +171,13 @@ Temperature 0.0 for deterministic output. The answer is parsed for yes/no. Anyth
 ```
 backend/          Python FastAPI app
   routers/        API endpoints (benchmark, battle, classify)
-  services/       OpenRouter client, rate limiter
+  services/       OpenRouter client, rate limiter, arena rankings
   config.py       Model definitions and settings
-  results/        JSONL run data and battle images
+  results/        JSONL run data, battle images, votes
 frontend/         Next.js 16 + shadcn/ui + Framer Motion
   src/app/        Pages: run, results, battle, gallery, about
+  src/components/ ModelLogo, UI components
+skills/           OpenClaw skill definitions (Telegram + ClawHub)
 docker-compose.yml
 ```
 
@@ -178,6 +192,7 @@ docker-compose.yml
 - FastAPI
 - httpx (async HTTP)
 - Pydantic
+- arena-rank (Bradley-Terry)
 
 </td>
 <td width="50%">
@@ -199,7 +214,7 @@ docker-compose.yml
 
 ## Acknowledgments
 
-[Silicon Valley](https://www.hbo.com/silicon-valley) (inspiration), [OpenRouter](https://openrouter.ai) (free models), [Pexels](https://www.pexels.com) (images), [shadcn/ui](https://ui.shadcn.com) (components), [OpenClaw](https://openclaw.com) (bot framework)
+[Silicon Valley](https://www.hbo.com/silicon-valley) (inspiration), [OpenRouter](https://openrouter.ai) (free models), [Pexels](https://www.pexels.com) (images), [shadcn/ui](https://ui.shadcn.com) (components), [OpenClaw](https://openclaw.com) (bot framework), [arena-rank](https://github.com/lmarena/arena-rank) (Bradley-Terry rankings)
 
 ## License
 

@@ -2,7 +2,7 @@ import Image from "next/image";
 import { cn } from "@/lib/utils";
 
 const LOGOS: Record<string, string> = {
-  nvidia: "/logos/NVIDIA.webp",
+  nvidia: "/logos/nvidia.png",
   google: "/logos/gemma3.png",
   allenai: "/logos/molmo_logo.png",
   mistralai: "/logos/mistral.svg",
