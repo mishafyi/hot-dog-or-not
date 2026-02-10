@@ -472,16 +472,25 @@ function InstallCTA() {
   );
 }
 
-/* ── Arena leaderboard ─────────────────────────────────────── */
+/* ── Arena leaderboard (reusable) ──────────────────────────── */
 
-function ArenaLeaderboardSection() {
+function LeaderboardCard({
+  title,
+  icon,
+  accentColor,
+  fetchFn,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  accentColor: "yellow" | "purple" | "cyan";
+  fetchFn: () => Promise<ArenaLeaderboard>;
+}) {
   const [data, setData] = useState<ArenaLeaderboard | null>(null);
 
   useEffect(() => {
     const load = async () => {
       try {
-        const d = await api.getArenaLeaderboard();
-        setData(d);
+        setData(await fetchFn());
       } catch {
         // ignore
       }
@@ -489,33 +498,39 @@ function ArenaLeaderboardSection() {
     load();
     const interval = setInterval(load, 10000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchFn]);
 
   if (!data) return null;
 
+  const gradients = {
+    yellow: "from-yellow-500 to-yellow-400",
+    purple: "from-purple-500 to-purple-400",
+    cyan: "from-cyan-500 to-cyan-400",
+  };
+
   if (data.models.length === 0) {
     return (
-      <Card className="p-6">
+      <Card className="p-5">
         <div className="flex items-center gap-2 mb-3">
-          <Trophy className="size-4 text-yellow-400" />
-          <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">
-            Arena Rankings
+          {icon}
+          <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+            {title}
           </h3>
         </div>
-        <div className="text-center py-4 space-y-1">
-          <p className="text-sm text-muted-foreground">
-            {data.total_votes} / {data.min_votes_needed} votes collected
+        <div className="text-center py-3 space-y-1">
+          <p className="text-xs text-muted-foreground">
+            {data.total_votes} / {data.min_votes_needed} votes
           </p>
-          <div className="h-1.5 rounded-full bg-muted/50 max-w-xs mx-auto overflow-hidden">
+          <div className="h-1.5 rounded-full bg-muted/50 max-w-[120px] mx-auto overflow-hidden">
             <motion.div
-              className="h-full bg-purple-500/50 rounded-full"
+              className={`h-full bg-gradient-to-r ${gradients[accentColor]} rounded-full`}
               initial={{ width: 0 }}
               animate={{ width: `${Math.min((data.total_votes / data.min_votes_needed) * 100, 100)}%` }}
               transition={{ duration: 0.6 }}
             />
           </div>
-          <p className="text-xs text-muted-foreground/60">
-            Need {data.min_votes_needed - data.total_votes} more votes to show rankings
+          <p className="text-[10px] text-muted-foreground/60">
+            Need {data.min_votes_needed - data.total_votes} more
           </p>
         </div>
       </Card>
@@ -526,19 +541,19 @@ function ArenaLeaderboardSection() {
   const minRating = Math.min(...data.models.map((m) => m.ci[0]));
 
   return (
-    <Card className="p-6">
-      <div className="flex items-center justify-between mb-4">
+    <Card className="p-5">
+      <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <Trophy className="size-4 text-yellow-400" />
-          <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">
-            Arena Rankings
+          {icon}
+          <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+            {title}
           </h3>
         </div>
-        <span className="text-xs font-mono tabular-nums text-muted-foreground/40">
+        <span className="text-[10px] font-mono tabular-nums text-muted-foreground/40">
           {data.total_votes} votes
         </span>
       </div>
-      <div className="space-y-3">
+      <div className="space-y-2.5">
         {data.models.map((model, i) => {
           const barWidth = maxRating > minRating
             ? ((model.rating - minRating) / (maxRating - minRating)) * 100
@@ -547,12 +562,12 @@ function ArenaLeaderboardSection() {
             <div key={model.model} className="space-y-1">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-mono text-muted-foreground/40 w-4">
+                  <span className="text-[10px] font-mono text-muted-foreground/40 w-4">
                     #{i + 1}
                   </span>
-                  <span className="text-sm font-semibold">{model.display}</span>
+                  <span className="text-xs font-semibold">{model.display}</span>
                 </div>
-                <div className="flex items-center gap-2 text-xs font-mono tabular-nums text-muted-foreground">
+                <div className="flex items-center gap-1.5 text-[10px] font-mono tabular-nums text-muted-foreground">
                   <span className="text-foreground font-bold">{model.rating}</span>
                   <span className="text-muted-foreground/40">
                     [{model.ci[0]}&ndash;{model.ci[1]}]
@@ -561,10 +576,8 @@ function ArenaLeaderboardSection() {
               </div>
               <div className="h-1.5 rounded-full bg-muted/30 overflow-hidden">
                 <motion.div
-                  className={`h-full rounded-full ${
-                    i === 0
-                      ? "bg-gradient-to-r from-yellow-500 to-yellow-400"
-                      : "bg-gradient-to-r from-purple-500/60 to-purple-400/60"
+                  className={`h-full rounded-full bg-gradient-to-r ${
+                    i === 0 ? gradients[accentColor] : "from-purple-500/60 to-purple-400/60"
                   }`}
                   initial={{ width: 0 }}
                   animate={{ width: `${Math.max(barWidth, 10)}%` }}
@@ -575,10 +588,32 @@ function ArenaLeaderboardSection() {
           );
         })}
       </div>
-      <p className="text-[10px] text-muted-foreground/40 mt-3 text-center">
+      <p className="text-[10px] text-muted-foreground/40 mt-2.5 text-center">
         Bradley-Terry ratings with 95% CI
       </p>
     </Card>
+  );
+}
+
+function SplitLeaderboards() {
+  const fetchUsers = useCallback(() => api.getUserLeaderboard(), []);
+  const fetchAgents = useCallback(() => api.getAgentLeaderboard(), []);
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <LeaderboardCard
+        title="Ranked by Humans"
+        icon={<span className="text-sm">👤</span>}
+        accentColor="yellow"
+        fetchFn={fetchUsers}
+      />
+      <LeaderboardCard
+        title="Ranked by Agents"
+        icon={<span className="text-sm">🤖</span>}
+        accentColor="cyan"
+        fetchFn={fetchAgents}
+      />
+    </div>
   );
 }
 
@@ -618,12 +653,10 @@ export default function BattlePage() {
       {/* Header */}
       <div className="text-center space-y-2">
         <h1 className="text-3xl font-bold tracking-tight">
-          <span className="text-emerald-400">Nemotron</span>
-          {" "}vs{" "}
-          <span className="text-orange-400">OpenClaw</span>
+          AI Cook-Off Arena
         </h1>
         <p className="text-sm text-muted-foreground/70">
-          AI vision battle — voted by users
+          Vision models get judged by users and agents
         </p>
       </div>
 
@@ -636,8 +669,8 @@ export default function BattlePage() {
         </div>
       </div>
 
-      {/* Arena leaderboard */}
-      <ArenaLeaderboardSection />
+      {/* Split leaderboards */}
+      <SplitLeaderboards />
 
       {/* Feed header */}
       <div className="flex items-center gap-2">

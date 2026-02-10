@@ -14,7 +14,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, Header, HTTPException, Query, UploadFile
 from pydantic import BaseModel as _BaseModel
 
 from config import settings
@@ -117,7 +117,6 @@ async def submit_round(
     image: UploadFile = File(...),
     claw_answer: str = Form(...),
     claw_reasoning: str = Form(""),
-    source: str = Form(""),
     claw_model: str = Form("openclaw"),
     authorization: str | None = Header(None),
 ):
@@ -180,7 +179,7 @@ async def submit_round(
         claw_reasoning=claw_reasoning,
         consensus=consensus,
         winner=winner,
-        source=source or None,
+        source="arena",
         claw_model=claw_model or None,
     )
 
@@ -279,3 +278,91 @@ async def submit_vote(body: VoteRequest):
         "first_model": _model_display(model_a),
         "second_model": _model_display(model_b),
     }
+
+
+EXCLUDED_MODELS = {"openclaw", "unknown"}
+
+
+@router.get("/leaderboard")
+async def get_leaderboard(source: str = Query("all")):
+    """Leaderboard with source filter: 'arena' (agent votes), 'users' (telegram), 'all'."""
+    rounds = _load_rounds()
+    all_votes = _load_votes()
+
+    # Build set of round_ids by source
+    if source == "arena":
+        valid_rounds = {r.round_id for r in rounds if r.source == "arena"}
+    elif source == "users":
+        valid_rounds = {r.round_id for r in rounds if r.source != "arena"}
+    else:
+        valid_rounds = {r.round_id for r in rounds}
+
+    votes = [
+        v for v in all_votes
+        if v.round_id in valid_rounds
+        and v.model_a not in EXCLUDED_MODELS
+        and v.model_b not in EXCLUDED_MODELS
+    ]
+    total = len(votes)
+    min_votes = 2
+
+    if total < min_votes:
+        return {
+            "models": [],
+            "total_votes": total,
+            "min_votes_needed": min_votes,
+        }
+
+    rows = [{"model_a": v.model_a, "model_b": v.model_b, "winner": v.voted_for} for v in votes]
+
+    vote_counts: dict[str, int] = defaultdict(int)
+    for v in votes:
+        vote_counts[v.model_a] += 1
+        vote_counts[v.model_b] += 1
+
+    try:
+        import pandas as pd
+        from arena_rank.models.bradley_terry import BradleyTerry
+        from arena_rank.utils.data_utils import PairDataset
+
+        df = pd.DataFrame(rows)
+        dataset = PairDataset.from_pandas(df)
+        bt = BradleyTerry(n_competitors=dataset.n_competitors)
+        result = bt.compute_ratings_and_cis(dataset)
+
+        models = []
+        for i, comp in enumerate(result["competitors"]):
+            models.append({
+                "model": comp,
+                "display": _model_display(comp),
+                "rating": round(float(result["ratings"][i])),
+                "ci": [round(float(result["rating_lower"][i])), round(float(result["rating_upper"][i]))],
+                "votes": vote_counts.get(comp, 0),
+            })
+        models.sort(key=lambda m: m["rating"], reverse=True)
+
+        return {"models": models, "total_votes": total, "min_votes_needed": min_votes}
+    except Exception:
+        # Fallback: basic win-rate ranking
+        model_wins: dict[str, int] = defaultdict(int)
+        model_total: dict[str, int] = defaultdict(int)
+        for v in votes:
+            model_total[v.model_a] += 1
+            model_total[v.model_b] += 1
+            if v.voted_for == "model_a":
+                model_wins[v.model_a] += 1
+            elif v.voted_for == "model_b":
+                model_wins[v.model_b] += 1
+
+        models = []
+        for mid in model_total:
+            wins = model_wins.get(mid, 0)
+            tot = model_total[mid]
+            wr = wins / tot if tot > 0 else 0.5
+            r = round(1500 + (wr - 0.5) * 400)
+            models.append({
+                "model": mid, "display": _model_display(mid),
+                "rating": r, "ci": [r - 50, r + 50], "votes": tot,
+            })
+        models.sort(key=lambda m: m["rating"], reverse=True)
+        return {"models": models, "total_votes": total, "min_votes_needed": min_votes}

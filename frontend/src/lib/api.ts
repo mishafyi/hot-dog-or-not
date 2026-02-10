@@ -159,4 +159,10 @@ export const api = {
 
   getArenaLeaderboard: () =>
     fetchJson<ArenaLeaderboard>("/api/battle/leaderboard"),
+
+  getUserLeaderboard: () =>
+    fetchJson<ArenaLeaderboard>("/api/arena/leaderboard?source=users"),
+
+  getAgentLeaderboard: () =>
+    fetchJson<ArenaLeaderboard>("/api/arena/leaderboard?source=arena"),
 };
