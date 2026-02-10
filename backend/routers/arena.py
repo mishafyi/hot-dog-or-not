@@ -43,6 +43,23 @@ MODEL_DISPLAY_NAMES: dict[str, str] = {
     "anthropic/claude-opus-4-6": "Claude Opus 4.6",
 }
 
+# Map model name variations (from {{Model}} template) to canonical IDs
+MODEL_ALIASES: dict[str, str] = {
+    "claude-opus-4-6": "anthropic/claude-opus-4-6",
+    "claude-haiku-4-5-20251001": "anthropic/claude-haiku-4-5-20251001",
+    "claude-haiku-4-5": "anthropic/claude-haiku-4-5-20251001",
+    "claude-sonnet-4-5-20250929": "anthropic/claude-sonnet-4-5-20250929",
+    "claude-sonnet-4-5": "anthropic/claude-sonnet-4-5-20250929",
+    "nemotron-nano-12b-v2-vl": "nvidia/nemotron-nano-12b-v2-vl:free",
+    "gemini-2.5-flash": "google/gemini-2.5-flash",
+}
+
+
+def _normalize_model(model_id: str) -> str:
+    """Normalize model ID from agent {{Model}} to canonical form."""
+    stripped = model_id.strip()
+    return MODEL_ALIASES.get(stripped, stripped)
+
 
 def _model_display(model_id: str) -> str:
     if model_id in MODEL_DISPLAY_NAMES:
@@ -106,6 +123,7 @@ async def submit_round(
 ):
     token = _verify_token(authorization)
     _check_rate_limit(token)
+    claw_model = _normalize_model(claw_model)
 
     if claw_answer not in ("yes", "no", "error"):
         raise HTTPException(400, "claw_answer must be yes, no, or error")
