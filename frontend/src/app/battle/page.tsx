@@ -280,12 +280,11 @@ function GridThumbnail({
       className="relative aspect-square cursor-pointer group overflow-hidden rounded-lg bg-black/30"
       onClick={onClick}
     >
-      <Image
+      <img
         src={imgSrc}
         alt={`Round ${index + 1}`}
-        fill
-        sizes="(max-width: 672px) 33vw, 224px"
-        className="object-cover group-hover:scale-105 transition-transform duration-300"
+        loading="lazy"
+        className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
       />
       <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
       <div className="absolute bottom-1.5 right-1.5 text-xs">{winnerIcon}</div>
@@ -315,14 +314,11 @@ function RoundDetail({ round, index, onClose }: { round: BattleRound; index: num
     >
       <Card className="overflow-hidden !py-0 !gap-0">
         {/* Full image */}
-        <div className="relative w-full max-h-[70vh] aspect-[4/3] bg-black/20">
-          <Image
+        <div className="relative w-full bg-black/20">
+          <img
             src={imgSrc}
             alt={`Round ${index + 1}`}
-            fill
-            sizes="(max-width: 672px) 100vw, 672px"
-            className="object-contain"
-            priority
+            className="w-full max-h-[70vh] object-contain"
           />
           <button
             onClick={onClose}
