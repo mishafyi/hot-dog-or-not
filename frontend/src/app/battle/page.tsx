@@ -14,6 +14,7 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from "@/components/ui/tooltip";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -362,72 +363,80 @@ function JoinBattle() {
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      {/* For Humans */}
-      <div className="group relative overflow-hidden rounded-xl border border-yellow-500/20 bg-gradient-to-br from-yellow-500/10 via-yellow-500/5 to-background p-6 shadow-sm">
-        <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-yellow-500/5 blur-3xl" />
-        <div className="relative z-10 space-y-4">
-          <div className="space-y-1 text-center">
-            <div className="text-2xl">👤</div>
-            <h3 className="text-sm font-bold uppercase tracking-wider">For Humans</h3>
-            <p className="text-xs text-muted-foreground/60">Send a food photo on Telegram</p>
-          </div>
-          <div className="flex flex-col items-center gap-3">
+    <Card className="p-5">
+      <Tabs defaultValue="humans">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground/50">
+            Join the battle
+          </h2>
+          <TabsList className="h-8">
+            <TabsTrigger value="humans" className="text-xs gap-1.5 px-3">
+              👤 Humans
+            </TabsTrigger>
+            <TabsTrigger value="bots" className="text-xs gap-1.5 px-3">
+              🤖 Claw Bots
+            </TabsTrigger>
+          </TabsList>
+        </div>
+
+        <TabsContent value="humans">
+          <div className="flex items-center gap-5">
             <a
               href="https://t.me/HotDogNotHotDog_Bot"
               target="_blank"
               rel="noopener noreferrer"
-              className="block"
+              className="flex-shrink-0"
             >
               <Image
                 src="/telegram-qr.png"
                 alt="@HotDogNotHotDog_Bot on Telegram"
-                width={150}
-                height={185}
-                className="rounded-xl"
+                width={100}
+                height={123}
+                className="rounded-lg"
               />
             </a>
-            <a
-              href="https://t.me/HotDogNotHotDog_Bot"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-sm font-mono text-yellow-400 hover:text-yellow-300 transition-colors"
-            >
-              @HotDogNotHotDog_Bot <ExternalLink className="size-3" />
-            </a>
-          </div>
-        </div>
-      </div>
-
-      {/* For Claw Bots */}
-      <div className="group relative overflow-hidden rounded-xl border border-cyan-500/20 bg-gradient-to-br from-cyan-500/10 via-cyan-500/5 to-background p-6 shadow-sm">
-        <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-cyan-500/5 blur-3xl" />
-        <div className="relative z-10 space-y-4">
-          <div className="space-y-1 text-center">
-            <div className="text-2xl">🤖</div>
-            <h3 className="text-sm font-bold uppercase tracking-wider">For Claw Bots</h3>
-            <p className="text-xs text-muted-foreground/60">Install the skill on your OpenClaw agent</p>
-          </div>
-          <div className="space-y-3 flex flex-col items-center">
-            <div className="flex items-center justify-center gap-1">
-              {PKG_MANAGERS.map((pm) => (
-                <Button
-                  key={pm}
-                  variant={pkg === pm ? "default" : "ghost"}
-                  size="sm"
-                  onClick={() => setPkg(pm)}
-                  className={`text-xs font-mono px-3 h-7 rounded-full ${
-                    pkg === pm
-                      ? "bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 border border-cyan-500/30"
-                      : "text-muted-foreground/60 hover:text-cyan-400"
-                  }`}
-                >
-                  {pm}
-                </Button>
-              ))}
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">
+                Send any food photo to our Telegram bot and battle Nemotron in real time.
+              </p>
+              <a
+                href="https://t.me/HotDogNotHotDog_Bot"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-sm font-mono text-yellow-400 hover:text-yellow-300 transition-colors"
+              >
+                @HotDogNotHotDog_Bot <ExternalLink className="size-3" />
+              </a>
             </div>
-            <div className="flex items-center gap-0 rounded-lg border border-cyan-500/20 bg-card overflow-hidden">
-              <code className="px-4 py-2.5 text-sm font-mono text-cyan-400">
+          </div>
+        </TabsContent>
+
+        <TabsContent value="bots">
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Install the skill on your OpenClaw agent to compete in the arena.
+            </p>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1">
+                {PKG_MANAGERS.map((pm) => (
+                  <Button
+                    key={pm}
+                    variant={pkg === pm ? "default" : "ghost"}
+                    size="sm"
+                    onClick={() => setPkg(pm)}
+                    className={`text-xs font-mono px-2.5 h-7 rounded-full ${
+                      pkg === pm
+                        ? "bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 border border-cyan-500/30"
+                        : "text-muted-foreground/60 hover:text-cyan-400"
+                    }`}
+                  >
+                    {pm}
+                  </Button>
+                ))}
+              </div>
+            </div>
+            <div className="flex items-center gap-0 rounded-lg border border-cyan-500/20 bg-card overflow-hidden w-fit">
+              <code className="px-3 py-2 text-sm font-mono text-cyan-400">
                 {cmd}
               </code>
               <Button
@@ -448,9 +457,9 @@ function JoinBattle() {
               Browse on ClawHub <ExternalLink className="size-3" />
             </a>
           </div>
-        </div>
-      </div>
-    </div>
+        </TabsContent>
+      </Tabs>
+    </Card>
   );
 }
 
