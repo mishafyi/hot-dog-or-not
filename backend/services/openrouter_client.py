@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import logging
 import mimetypes
 import time
 
 import httpx
+
+logger = logging.getLogger("openrouter")
 
 from config import settings, PROMPT
 
@@ -18,7 +21,7 @@ class OpenRouterClient:
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
-            self._client = httpx.AsyncClient(timeout=60.0)
+            self._client = httpx.AsyncClient(timeout=15.0)
         return self._client
 
     async def close(self):
@@ -66,18 +69,31 @@ class OpenRouterClient:
         }
 
         client = await self._get_client()
-        retries = [10, 30, 60]
+        retries = [2, 5, 10]
+        last_error = None
 
         for attempt in range(len(retries) + 1):
             start = time.monotonic()
-            resp = await client.post(
-                f"{self.base_url}/chat/completions",
-                json=payload,
-                headers=headers,
-            )
+            try:
+                resp = await client.post(
+                    f"{self.base_url}/chat/completions",
+                    json=payload,
+                    headers=headers,
+                )
+            except httpx.TimeoutException:
+                latency_ms = (time.monotonic() - start) * 1000
+                last_error = f"Timeout after {latency_ms:.0f}ms (attempt {attempt + 1})"
+                logger.warning("%s model=%s", last_error, model_id)
+                if attempt < len(retries):
+                    await asyncio.sleep(retries[attempt])
+                    continue
+                raise RuntimeError(last_error)
+
             latency_ms = (time.monotonic() - start) * 1000
 
-            if resp.status_code in (429, 402):
+            if resp.status_code in (429, 402, 502, 503):
+                last_error = f"{resp.status_code} (attempt {attempt + 1})"
+                logger.warning("%s model=%s body=%s", last_error, model_id, resp.text[:200])
                 if attempt < len(retries):
                     await asyncio.sleep(retries[attempt])
                     continue
@@ -99,7 +115,7 @@ class OpenRouterClient:
                     content = reasoning
             return content.strip(), reasoning.strip(), latency_ms
 
-        return "", "", 0.0  # unreachable
+        raise RuntimeError(last_error or "All retries exhausted")
 
     @staticmethod
     def _encode_image(path: str) -> str:
