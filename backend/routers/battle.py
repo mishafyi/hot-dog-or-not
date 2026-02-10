@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import re
 import time
 import uuid
 from collections import defaultdict
@@ -200,8 +199,7 @@ async def submit_round(
             NEMOTRON_MODEL, str(image_path)
         )
         nemotron_answer = parse_response(raw_response)
-        desc_match = re.search(r"Description:\s*(.+?)(?:\n|$)", raw_response)
-        nemotron_reasoning = desc_match.group(1).strip() if desc_match else raw_response
+        nemotron_reasoning = reasoning or raw_response
     except Exception as exc:
         nemotron_answer = "error"
         nemotron_reasoning = str(exc)
@@ -275,27 +273,23 @@ async def submit_round(
             telegram_chat_id = str(best["chat_id"])
 
     # Send results + vote buttons in one Telegram message (no delay needed)
-    sent_to_telegram = False
     if telegram_chat_id and TELEGRAM_BOT_TOKEN:
         buttons = [
             {"text": "Response 1", "callback_data": f"hdv:{round_id}:first:{first_side}"},
             {"text": "Response 2", "callback_data": f"hdv:{round_id}:second:{first_side}"},
         ]
-        result = await _tg_api("sendMessage", {
+        await _tg_api("sendMessage", {
             "chat_id": int(telegram_chat_id),
             "text": formatted_text,
             "reply_markup": {"inline_keyboard": [buttons]},
         })
-        sent_to_telegram = result is not None and result.get("ok", False)
 
     audit_log.info(
-        "BATTLE round=%s model=%s source=%s winner=%s tg=%s",
-        round_id[:8], claw_model or "?", battle_round.source or "?", winner, sent_to_telegram,
+        "BATTLE round=%s model=%s source=%s winner=%s",
+        round_id[:8], claw_model or "?", battle_round.source or "?", winner,
     )
 
-    if sent_to_telegram:
-        return {}
-    return {"formatted_text": formatted_text}
+    return {}
 
 
 @router.get("/feed")
