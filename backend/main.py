@@ -5,7 +5,7 @@ import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import dataset, benchmark, results, classify, battle
+from routers import dataset, benchmark, results, classify, battle, arena
 
 app = FastAPI(title="Hot Dog or Not - LLM Vision Benchmark")
 
@@ -32,6 +32,7 @@ app.include_router(benchmark.router)
 app.include_router(results.router)
 app.include_router(classify.router)
 app.include_router(battle.router)
+app.include_router(arena.router)
 
 
 @app.get("/api/models")
