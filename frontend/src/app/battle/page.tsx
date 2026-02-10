@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, Clock, Copy, Check, ExternalLink, Trophy } from "lucide-react";
+import { Clock, Copy, Check, ExternalLink, Trophy } from "lucide-react";
 import Image from "next/image";
 import { api } from "@/lib/api";
 import type { BattleRound, ArenaLeaderboard } from "@/lib/types";
@@ -272,7 +272,6 @@ function GridThumbnail({
 /* ── Expanded round detail ─────────────────────────────────── */
 
 function RoundDetail({ round, index, onClose }: { round: BattleRound; index: number; onClose: () => void }) {
-  const [showReasoning, setShowReasoning] = useState(false);
   const hasReasoning = round.nemotron_reasoning || round.claw_reasoning;
   const imgSrc = `${API_URL}/api/battle/images/${round.image_filename}`;
   const clawName = modelDisplay(round.claw_model);
@@ -325,37 +324,23 @@ function RoundDetail({ round, index, onClose }: { round: BattleRound; index: num
         {/* Vote info */}
         <div className="px-4 pb-3 flex items-center justify-center gap-3">
           <span className="text-xs text-muted-foreground/60">
-            {round.vote_winner === "tie" ? "Tied" : round.vote_winner === "nemotron" ? "Nemotron preferred" : `${clawName} preferred`}
+            {round.source === "arena" ? "🤖 Agent" : "👤 Human"} voted:{" "}
+            {round.vote_winner === "tie"
+              ? "Tie"
+              : round.vote_winner === "nemotron"
+                ? "Nemotron 12B wins"
+                : `${clawName} wins`}
             {round.vote_count && round.vote_count > 1 ? ` (${round.vote_count} votes)` : ""}
           </span>
         </div>
 
-        {/* Reasoning toggle */}
+        {/* Reasoning (always visible) */}
         {hasReasoning && (
-          <button
-            onClick={() => setShowReasoning(!showReasoning)}
-            className="w-full border-t border-border/30 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors flex items-center justify-center gap-1.5"
-          >
-            <ChevronDown className={`size-4 transition-transform duration-200 ${showReasoning ? "rotate-180" : ""}`} />
-            {showReasoning ? "Hide reasoning" : "Show reasoning"}
-          </button>
+          <div className="px-4 pb-4 space-y-2 border-t border-border/30 pt-3">
+            <ReasoningPanel reasoning={round.nemotron_reasoning} side="nemotron" />
+            <ReasoningPanel reasoning={round.claw_reasoning} side="openclaw" label={clawName} />
+          </div>
         )}
-        <AnimatePresence>
-          {showReasoning && hasReasoning && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: "auto", opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              className="overflow-hidden"
-            >
-              <div className="px-4 pb-4 space-y-2 border-t border-border/30 pt-3">
-                <ReasoningPanel reasoning={round.nemotron_reasoning} side="nemotron" />
-                <ReasoningPanel reasoning={round.claw_reasoning} side="openclaw" label={clawName} />
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
       </Card>
     </motion.div>
   );
