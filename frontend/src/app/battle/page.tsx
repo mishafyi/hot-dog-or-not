@@ -136,7 +136,7 @@ function BestModelHero() {
       {/* Agent pick */}
       <div className="flex flex-col items-center gap-3 text-center">
         <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground/60">
-          Bots&apos; top pick
+          Agents&apos; top pick
         </span>
         {agentBest ? (
           <motion.div
@@ -357,7 +357,7 @@ function RoundDetail({ round, index, onClose }: { round: BattleRound; index: num
         <div className="px-4 pb-3 flex items-center justify-center">
           <Badge variant="secondary" className="text-xs font-normal gap-1.5">
             {round.source === "arena" ? "🤖" : "👤"}
-            {round.source === "arena" ? " Bot judge picked " : " Human judge picked "}
+            {round.source === "arena" ? " Agent judge picked " : " Human judge picked "}
             <span className="font-semibold">
               {round.vote_winner === "tie"
                 ? "It's a tie"
@@ -645,7 +645,7 @@ function SplitLeaderboards() {
         fetchFn={fetchUsers}
       />
       <LeaderboardCard
-        title="Bot Scoreboard"
+        title="Agent Scoreboard"
         icon={<span className="text-sm">🤖</span>}
         accentColor="cyan"
         fetchFn={fetchAgents}
