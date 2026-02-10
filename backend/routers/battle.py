@@ -9,11 +9,13 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
+import asyncio
 import hashlib
 import hmac
 import secrets
 
 import httpx
+from PIL import Image as PILImage
 from fastapi import APIRouter, File, Form, Header, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
 
@@ -124,6 +126,42 @@ def _check_rate_limit(token: str) -> None:
         audit_log.warning("RATE_LIMIT token=%s count=%d", token[:8] + "...", len(_token_requests[token]))
         raise HTTPException(429, "Rate limit exceeded — max 5 requests per minute")
     _token_requests[token].append(now)
+
+
+THUMB_DIR = BATTLE_IMAGES_DIR / "thumbs"
+
+
+def _generate_optimized_images(image_path: Path) -> None:
+    """Compress the original image and generate a 300px thumbnail.
+    Called in a background thread to avoid blocking the event loop."""
+    try:
+        with PILImage.open(image_path) as img:
+            img = img.convert("RGB")
+
+            # Compress original: max 1200px wide, 85% JPEG quality
+            if img.width > 1200:
+                ratio = 1200 / img.width
+                new_size = (1200, int(img.height * ratio))
+                img_resized = img.resize(new_size, PILImage.LANCZOS)
+            else:
+                img_resized = img
+            img_resized.save(image_path, "JPEG", quality=85, optimize=True)
+
+            # Generate thumbnail: 300px wide
+            THUMB_DIR.mkdir(parents=True, exist_ok=True)
+            thumb_path = THUMB_DIR / image_path.name
+            ratio = 300 / img.width
+            thumb_size = (300, int(img.height * ratio))
+            thumb = img.resize(thumb_size, PILImage.LANCZOS)
+            thumb.save(thumb_path, "JPEG", quality=80, optimize=True)
+    except Exception:
+        pass  # non-critical — original image still works
+
+
+async def _optimize_image_background(image_path: Path) -> None:
+    """Run image optimization in a background thread."""
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, _generate_optimized_images, image_path)
 
 
 def _load_rounds() -> list[BattleRound]:
@@ -289,6 +327,9 @@ async def submit_round(
         round_id[:8], claw_model or "?", battle_round.source or "?", winner,
     )
 
+    # Optimize image in background (compress original + generate thumbnail)
+    asyncio.create_task(_optimize_image_background(image_path))
+
     return {}
 
 
@@ -393,6 +434,19 @@ async def get_stats():
         "ties": ties,
         "total_voted_rounds": total_voted,
     }
+
+
+@router.get("/images/thumb/{filename}")
+async def get_thumb(filename: str):
+    safe = Path(filename).name
+    thumb_path = THUMB_DIR / safe
+    if thumb_path.exists():
+        return FileResponse(thumb_path)
+    # Fall back to original if thumbnail hasn't been generated yet
+    original = BATTLE_IMAGES_DIR / safe
+    if not original.exists():
+        raise HTTPException(404, "Image not found")
+    return FileResponse(original)
 
 
 @router.get("/images/{filename}")

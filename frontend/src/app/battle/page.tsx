@@ -268,7 +268,7 @@ function GridThumbnail({
   index: number;
   onClick: () => void;
 }) {
-  const imgSrc = `${API_URL}/api/battle/images/${round.image_filename}`;
+  const imgSrc = `${API_URL}/api/battle/images/thumb/${round.image_filename}`;
   const winnerIcon =
     round.vote_winner === "nemotron" ? "🟢" : round.vote_winner === "openclaw" ? "🟠" : "⚪";
 
