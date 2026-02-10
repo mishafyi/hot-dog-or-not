@@ -261,10 +261,10 @@ async def submit_round(
     # Auto-fill telegram_chat_id from recent webhook context if not provided
     if not telegram_chat_id:
         now = time.time()
-        # Find the most recent context within 120 seconds
+        # Find the most recent context within 300 seconds (must survive OpenRouter retries)
         best = None
         for uid, ctx in list(_recent_tg_context.items()):
-            if now - ctx["ts"] > 120:
+            if now - ctx["ts"] > 300:
                 del _recent_tg_context[uid]
                 continue
             if best is None or ctx["ts"] > best["ts"]:
