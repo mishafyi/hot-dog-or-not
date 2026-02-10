@@ -2,12 +2,13 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Clock, Copy, Check, ExternalLink, Trophy } from "lucide-react";
+import { Clock, Copy, Check, ExternalLink, Trophy, Cpu } from "lucide-react";
 import Image from "next/image";
 import { api } from "@/lib/api";
 import type { BattleRound, ArenaLeaderboard } from "@/lib/types";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Tooltip,
@@ -15,6 +16,7 @@ import {
   TooltipContent,
 } from "@/components/ui/tooltip";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { ModelLogo } from "@/components/model-logo";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -26,6 +28,19 @@ const MODEL_DISPLAY: Record<string, string> = {
   "anthropic/claude-opus-4-6": "Claude Opus 4.6",
   "anthropic/claude-sonnet-4-5-20250929": "Claude Sonnet 4.5",
 };
+
+/** Get logo path for a model ID (mirrors model-logo.tsx logic) */
+function getModelLogoPath(modelId: string): string | null {
+  const LOGOS: Record<string, string> = {
+    nvidia: "/logos/NVIDIA.webp",
+    google: "/logos/gemma3.png",
+    allenai: "/logos/molmo_logo.png",
+    mistralai: "/logos/mistral.svg",
+    anthropic: "/logos/claude.svg",
+  };
+  const prefix = modelId.split("/")[0]?.toLowerCase();
+  return LOGOS[prefix] ?? null;
+}
 
 function modelDisplay(id: string | null | undefined): string {
   if (!id) return "OpenClaw";
@@ -81,59 +96,72 @@ function BestModelHero() {
   const agentBest = agentData?.models?.[0];
 
   return (
-    <div className="grid grid-cols-2 gap-4">
+    <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-center">
       {/* Human pick */}
       <div className="flex flex-col items-center gap-3 text-center">
         <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground/60">
-          Humans' top pick
+          Humans&apos; top pick
         </span>
-        <span className="text-2xl">👤</span>
         {userBest ? (
           <motion.div
             key={userBest.display}
             initial={{ scale: 1.1, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="space-y-1"
+            className="flex flex-col items-center gap-2"
           >
-            <div className="text-lg font-bold text-yellow-400">{userBest.display}</div>
-            <div className="text-xs font-mono text-muted-foreground/50">
-              {userBest.rating} ELO &middot; {userData!.total_votes} votes
+            <div className="size-10 rounded-full bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center">
+              {getModelLogoPath(userBest.model) ? (
+                <ModelLogo modelId={userBest.model} size={24} />
+              ) : (
+                <Cpu className="size-5 text-yellow-400" />
+              )}
             </div>
+            <div className="text-lg font-bold text-yellow-400">{userBest.display}</div>
+            <Badge variant="outline" className="text-[10px] font-mono text-yellow-400/80 border-yellow-500/30">
+              {userBest.rating} ELO &middot; {userData!.total_votes} votes
+            </Badge>
           </motion.div>
         ) : (
-          <div className="space-y-1">
-            <div className="text-sm text-muted-foreground/40">Judging in progress...</div>
-            <div className="text-xs text-muted-foreground/30">
-              {userData?.total_votes ?? 0} / {userData?.min_votes_needed ?? 2}
-            </div>
+          <div className="flex flex-col items-center gap-2">
+            <Skeleton className="size-10 rounded-full" />
+            <Skeleton className="h-5 w-24 rounded" />
+            <Skeleton className="h-4 w-16 rounded" />
           </div>
         )}
       </div>
 
+      {/* Divider */}
+      <div className="h-16 w-px bg-border/40" />
+
       {/* Agent pick */}
       <div className="flex flex-col items-center gap-3 text-center">
         <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground/60">
-          Bots' top pick
+          Bots&apos; top pick
         </span>
-        <span className="text-2xl">🤖</span>
         {agentBest ? (
           <motion.div
             key={agentBest.display}
             initial={{ scale: 1.1, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="space-y-1"
+            className="flex flex-col items-center gap-2"
           >
-            <div className="text-lg font-bold text-cyan-400">{agentBest.display}</div>
-            <div className="text-xs font-mono text-muted-foreground/50">
-              {agentBest.rating} ELO &middot; {agentData!.total_votes} votes
+            <div className="size-10 rounded-full bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center">
+              {getModelLogoPath(agentBest.model) ? (
+                <ModelLogo modelId={agentBest.model} size={24} />
+              ) : (
+                <Cpu className="size-5 text-cyan-400" />
+              )}
             </div>
+            <div className="text-lg font-bold text-cyan-400">{agentBest.display}</div>
+            <Badge variant="outline" className="text-[10px] font-mono text-cyan-400/80 border-cyan-500/30">
+              {agentBest.rating} ELO &middot; {agentData!.total_votes} votes
+            </Badge>
           </motion.div>
         ) : (
-          <div className="space-y-1">
-            <div className="text-sm text-muted-foreground/40">Judging in progress...</div>
-            <div className="text-xs text-muted-foreground/30">
-              {agentData?.total_votes ?? 0} / {agentData?.min_votes_needed ?? 2}
-            </div>
+          <div className="flex flex-col items-center gap-2">
+            <Skeleton className="size-10 rounded-full" />
+            <Skeleton className="h-5 w-24 rounded" />
+            <Skeleton className="h-4 w-16 rounded" />
           </div>
         )}
       </div>
@@ -309,8 +337,8 @@ function RoundDetail({ round, index, onClose }: { round: BattleRound; index: num
         </div>
 
         {/* VS badges */}
-        <div className="px-4 py-3 flex items-center justify-center">
-          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 w-full max-w-xs">
+        <div className="px-4 py-2 flex items-center justify-center">
+          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 w-full max-w-xs">
             <div className="flex justify-end">
               <SideBadge side="nemotron" voteWinner={round.vote_winner} />
             </div>
@@ -322,16 +350,19 @@ function RoundDetail({ round, index, onClose }: { round: BattleRound; index: num
         </div>
 
         {/* Vote info */}
-        <div className="px-4 pb-3 flex items-center justify-center gap-3">
-          <span className="text-xs text-muted-foreground/60">
-            {round.source === "arena" ? "🤖 Bot judge picked " : "👤 Human judge picked "}
-            {round.vote_winner === "tie"
-              ? "It's a tie"
-              : round.vote_winner === "nemotron"
-                ? "Nemotron 12B"
-                : clawName}
+        <div className="px-4 pb-3 flex items-center justify-center">
+          <Badge variant="secondary" className="text-xs font-normal gap-1.5">
+            {round.source === "arena" ? "🤖" : "👤"}
+            {round.source === "arena" ? " Bot judge picked " : " Human judge picked "}
+            <span className="font-semibold">
+              {round.vote_winner === "tie"
+                ? "It's a tie"
+                : round.vote_winner === "nemotron"
+                  ? "Nemotron 12B"
+                  : clawName}
+            </span>
             {round.vote_count && round.vote_count > 1 ? ` (${round.vote_count} votes)` : ""}
-          </span>
+          </Badge>
         </div>
 
         {/* Reasoning (always visible) */}
@@ -562,6 +593,7 @@ function LeaderboardCard({
                   <span className="text-[10px] font-mono text-muted-foreground/40 w-4">
                     #{i + 1}
                   </span>
+                  <ModelLogo modelId={model.model} size={16} />
                   <span className="text-xs font-semibold">{model.display}</span>
                 </div>
                 <div className="flex items-center gap-1.5 text-[10px] font-mono tabular-nums text-muted-foreground">
@@ -645,7 +677,7 @@ export default function BattlePage() {
       {/* Header */}
       <div className="text-center space-y-2">
         <h1 className="text-3xl font-bold tracking-tight">
-          AI Cook-Off Arena
+          🌭 AI Cook-Off Arena
         </h1>
         <p className="text-sm text-muted-foreground/70">
           AI models classify food. You judge who nailed it.

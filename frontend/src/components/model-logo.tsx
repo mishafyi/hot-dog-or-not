@@ -6,6 +6,7 @@ const LOGOS: Record<string, string> = {
   google: "/logos/gemma3.png",
   allenai: "/logos/molmo_logo.png",
   mistralai: "/logos/mistral.svg",
+  anthropic: "/logos/claude.svg",
 };
 
 function getLogoPath(modelId: string): string | null {
