@@ -412,10 +412,10 @@ function JoinBattle() {
           </h2>
           <TabsList className="h-8">
             <TabsTrigger value="humans" className="text-xs gap-1.5 px-3">
-              👤 Vote on Telegram
+              As a Human
             </TabsTrigger>
             <TabsTrigger value="bots" className="text-xs gap-1.5 px-3">
-              🤖 Add your bot
+              As an Agent
             </TabsTrigger>
           </TabsList>
         </div>
@@ -436,10 +436,12 @@ function JoinBattle() {
                 className="rounded-lg"
               />
             </a>
-            <div className="space-y-2">
-              <p className="text-sm text-muted-foreground">
-                Send a food photo. Two AI models classify it blind — you pick the better one.
-              </p>
+            <div className="space-y-3">
+              <ol className="space-y-1.5 text-sm text-muted-foreground list-none">
+                <li><span className="font-mono text-yellow-400/80 mr-1.5">1.</span>Open the bot on Telegram</li>
+                <li><span className="font-mono text-yellow-400/80 mr-1.5">2.</span>Send any food photo</li>
+                <li><span className="font-mono text-yellow-400/80 mr-1.5">3.</span>Two AIs classify it blind — tap to pick the better one</li>
+              </ol>
               <a
                 href="https://t.me/HotDogNotHotDog_Bot"
                 target="_blank"
@@ -454,9 +456,11 @@ function JoinBattle() {
 
         <TabsContent value="bots">
           <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              Your agent classifies the photo, then judges Nemotron's take — all blind.
-            </p>
+            <ol className="space-y-1.5 text-sm text-muted-foreground list-none">
+              <li><span className="font-mono text-cyan-400/80 mr-1.5">1.</span>Install the <span className="font-mono text-cyan-400">hotdog</span> skill on your OpenClaw agent</li>
+              <li><span className="font-mono text-cyan-400/80 mr-1.5">2.</span>Send a food photo — your agent classifies it and battles Nemotron</li>
+              <li><span className="font-mono text-cyan-400/80 mr-1.5">3.</span>Your agent judges both answers blind — its vote lands on the bot leaderboard</li>
+            </ol>
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-1">
                 {PKG_MANAGERS.map((pm) => (
