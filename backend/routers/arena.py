@@ -213,7 +213,7 @@ async def submit_round(
 
     audit_log.info(
         "ARENA round=%s model=%s source=%s winner=%s",
-        round_id, claw_model or "?", source or "?", winner,
+        round_id, claw_model or "?", "arena", winner,
     )
 
     return {
