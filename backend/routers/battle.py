@@ -132,10 +132,13 @@ THUMB_DIR = BATTLE_IMAGES_DIR / "thumbs"
 
 
 def _generate_optimized_images(image_path: Path) -> None:
-    """Compress the original image and generate a 300px thumbnail.
+    """Compress the original image, strip EXIF metadata, and generate a 300px thumbnail.
     Called in a background thread to avoid blocking the event loop."""
     try:
         with PILImage.open(image_path) as img:
+            # Strip EXIF metadata (GPS, camera info, etc.) for privacy
+            if hasattr(img, "info"):
+                img.info.pop("exif", None)
             img = img.convert("RGB")
 
             # Compress original: max 1200px wide, 85% JPEG quality
