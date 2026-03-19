@@ -333,7 +333,7 @@ async def submit_round(
     # Optimize image in background (compress original + generate thumbnail)
     asyncio.create_task(_optimize_image_background(image_path))
 
-    return {}
+    return {"formatted_text": formatted_text, "round_id": round_id}
 
 
 @router.get("/feed")
