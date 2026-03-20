@@ -83,6 +83,11 @@ async def get_available_models():
             continue
 
         model_id = m["id"]
+
+        # Skip meta-models that route randomly
+        if model_id.startswith("openrouter/"):
+            continue
+
         if not model_id.endswith(":free"):
             model_id = model_id + ":free"
 

@@ -40,6 +40,12 @@ MODELS = [
         "provider": "Google",
         "params": "12B",
     },
+    {
+        "id": "mistralai/mistral-small-3.1-24b-instruct:free",
+        "name": "Mistral Small 3.1 24B",
+        "provider": "Mistral",
+        "params": "24B",
+    },
 ]
 
 PROMPT = """Describe the food in the image in 2-4 sentences. Then decide: is it a hot dog (a sausage served in a bun/roll; any cooking style)?
