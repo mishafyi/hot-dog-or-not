@@ -5,7 +5,6 @@ Writes to the same data files so rounds appear on the website.
 """
 from __future__ import annotations
 
-import json
 import logging
 import random
 import time
@@ -19,6 +18,7 @@ from pydantic import BaseModel as _BaseModel
 
 from config import settings
 from models import BattleRound, BattleVote
+from services.battle_data import invalidate_cache, load_rounds, load_votes, model_display
 from services.openrouter_client import OpenRouterClient
 from services.rate_limiter import global_rate_limiter
 from services.response_parser import parse_response
@@ -34,14 +34,6 @@ VOTES_FILE = Path(settings.results_dir) / "votes.jsonl"
 
 RATE_LIMIT = 5  # requests per minute per token
 _token_requests: dict[str, list[float]] = defaultdict(list)
-
-MODEL_DISPLAY_NAMES: dict[str, str] = {
-    "nvidia/nemotron-nano-12b-v2-vl:free": "Nemotron 12B",
-    "google/gemini-2.5-flash": "Gemini 2.5 Flash",
-    "google/gemini-2.5-flash-preview": "Gemini 2.5 Flash",
-    "anthropic/claude-haiku-4-5-20251001": "Claude Haiku 4.5",
-    "anthropic/claude-opus-4-6": "Claude Opus 4.6",
-}
 
 # Map model name variations (from {{Model}} template) to canonical IDs
 MODEL_ALIASES: dict[str, str] = {
@@ -59,13 +51,6 @@ def _normalize_model(model_id: str) -> str:
     """Normalize model ID from agent {{Model}} to canonical form."""
     stripped = model_id.strip()
     return MODEL_ALIASES.get(stripped, stripped)
-
-
-def _model_display(model_id: str) -> str:
-    if model_id in MODEL_DISPLAY_NAMES:
-        return MODEL_DISPLAY_NAMES[model_id]
-    name = model_id.split("/")[-1].removesuffix(":free")
-    return name.replace("-", " ").title()
 
 
 def _verify_token(authorization: str | None) -> str:
@@ -88,28 +73,6 @@ def _check_rate_limit(token: str) -> None:
     if len(_token_requests[token]) >= RATE_LIMIT:
         raise HTTPException(429, "Rate limit exceeded — max 5 requests per minute")
     _token_requests[token].append(now)
-
-
-def _load_rounds() -> list[BattleRound]:
-    if not BATTLE_FILE.exists():
-        return []
-    rounds: list[BattleRound] = []
-    for line in BATTLE_FILE.read_text().splitlines():
-        line = line.strip()
-        if line:
-            rounds.append(BattleRound(**json.loads(line)))
-    return rounds
-
-
-def _load_votes() -> list[BattleVote]:
-    if not VOTES_FILE.exists():
-        return []
-    votes: list[BattleVote] = []
-    for line in VOTES_FILE.read_text().splitlines():
-        line = line.strip()
-        if line:
-            votes.append(BattleVote(**json.loads(line)))
-    return votes
 
 
 @router.post("/round")
@@ -186,6 +149,7 @@ async def submit_round(
     BATTLE_FILE.parent.mkdir(parents=True, exist_ok=True)
     with open(BATTLE_FILE, "a") as f:
         f.write(battle_round.model_dump_json() + "\n")
+    invalidate_cache()
 
     # Randomly assign sides for blind voting
     first_side = random.choice(["nemotron", "openclaw"])
@@ -237,12 +201,12 @@ async def submit_vote(body: VoteRequest):
     if body.first_side not in ("nemotron", "openclaw"):
         raise HTTPException(400, "first_side must be nemotron or openclaw")
 
-    rounds = _load_rounds()
+    rounds = load_rounds()
     round_ = next((r for r in rounds if r.round_id == body.round_id), None)
     if not round_:
         raise HTTPException(404, "Round not found")
 
-    votes = _load_votes()
+    votes = load_votes()
     if any(v.round_id == body.round_id and v.voter_id == body.voter_id for v in votes):
         raise HTTPException(409, "Already voted on this round")
 
@@ -271,23 +235,27 @@ async def submit_vote(body: VoteRequest):
     VOTES_FILE.parent.mkdir(parents=True, exist_ok=True)
     with open(VOTES_FILE, "a") as f:
         f.write(vote.model_dump_json() + "\n")
+    invalidate_cache()
 
     return {
         "status": "ok",
         "reveal": True,
-        "first_model": _model_display(model_a),
-        "second_model": _model_display(model_b),
+        "first_model": model_display(model_a),
+        "second_model": model_display(model_b),
     }
 
 
 EXCLUDED_MODELS = {"openclaw", "unknown"}
 
+# Leaderboard result cache: {source: {"result": ..., "ts": float}}
+_leaderboard_cache: dict[str, dict] = {}
+_LEADERBOARD_TTL = 60.0  # seconds
 
-@router.get("/leaderboard")
-async def get_leaderboard(source: str = Query("all")):
-    """Leaderboard with source filter: 'arena' (agent votes), 'users' (telegram), 'all'."""
-    rounds = _load_rounds()
-    all_votes = _load_votes()
+
+def _compute_leaderboard(source: str) -> dict:
+    """Compute leaderboard result for a given source filter."""
+    rounds = load_rounds()
+    all_votes = load_votes()
 
     # Build set of round_ids by source
     if source == "arena":
@@ -334,7 +302,7 @@ async def get_leaderboard(source: str = Query("all")):
         for i, comp in enumerate(result["competitors"]):
             models.append({
                 "model": comp,
-                "display": _model_display(comp),
+                "display": model_display(comp),
                 "rating": round(float(result["ratings"][i])),
                 "ci": [round(float(result["rating_lower"][i])), round(float(result["rating_upper"][i]))],
                 "votes": vote_counts.get(comp, 0),
@@ -361,8 +329,21 @@ async def get_leaderboard(source: str = Query("all")):
             wr = wins / tot if tot > 0 else 0.5
             r = round(1500 + (wr - 0.5) * 400)
             models.append({
-                "model": mid, "display": _model_display(mid),
+                "model": mid, "display": model_display(mid),
                 "rating": r, "ci": [r - 50, r + 50], "votes": tot,
             })
         models.sort(key=lambda m: m["rating"], reverse=True)
         return {"models": models, "total_votes": total, "min_votes_needed": min_votes}
+
+
+@router.get("/leaderboard")
+async def get_leaderboard(source: str = Query("all")):
+    """Leaderboard with source filter: 'arena' (agent votes), 'users' (telegram), 'all'."""
+    now = time.time()
+    cached = _leaderboard_cache.get(source)
+    if cached is not None and now - cached["ts"] < _LEADERBOARD_TTL:
+        return cached["result"]
+
+    result = _compute_leaderboard(source)
+    _leaderboard_cache[source] = {"result": result, "ts": now}
+    return result

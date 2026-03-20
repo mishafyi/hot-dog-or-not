@@ -3,8 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence, useReducedMotion } from "motion/react";
-import { Tick02Icon } from "@hugeicons/core-free-icons";
-import { HugeiconsIcon } from "@hugeicons/react";
+import { Check } from "lucide-react";
 import { useMemo } from "react";
 
 interface StatusButtonProps {
@@ -114,7 +113,7 @@ export function StatusButton({
                     transition={{ type: "spring", stiffness: 500, damping: 25 }}
                     className="absolute inset-0 flex items-center justify-center"
                   >
-                    <HugeiconsIcon icon={Tick02Icon} className="size-4" />
+                    <Check className="size-4" />
                   </motion.div>
                 )}
               </AnimatePresence>

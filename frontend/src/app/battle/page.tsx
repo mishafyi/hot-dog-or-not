@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Clock, Copy, Check, ExternalLink, Trophy, Cpu } from "lucide-react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { motion, AnimatePresence } from "motion/react";
+import { Copy, Check, ExternalLink, Trophy, Cpu } from "lucide-react";
 import Image from "next/image";
 import { api } from "@/lib/api";
 import type { BattleRound, ArenaLeaderboard } from "@/lib/types";
@@ -70,28 +70,13 @@ function maskSource(source: string): string {
 
 /* ── Best Model Hero ────────────────────────────────────────── */
 
-function BestModelHero() {
-  const [userData, setUserData] = useState<ArenaLeaderboard | null>(null);
-  const [agentData, setAgentData] = useState<ArenaLeaderboard | null>(null);
-
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const [u, a] = await Promise.all([
-          api.getUserLeaderboard(),
-          api.getAgentLeaderboard(),
-        ]);
-        setUserData(u);
-        setAgentData(a);
-      } catch {
-        // ignore
-      }
-    };
-    load();
-    const interval = setInterval(load, 10000);
-    return () => clearInterval(interval);
-  }, []);
-
+function BestModelHero({
+  userData,
+  agentData,
+}: {
+  userData: ArenaLeaderboard | null;
+  agentData: ArenaLeaderboard | null;
+}) {
   const userBest = userData?.models?.[0];
   const agentBest = agentData?.models?.[0];
 
@@ -510,27 +495,13 @@ function LeaderboardCard({
   title,
   icon,
   accentColor,
-  fetchFn,
+  data,
 }: {
   title: string;
   icon: React.ReactNode;
   accentColor: "yellow" | "purple" | "cyan";
-  fetchFn: () => Promise<ArenaLeaderboard>;
+  data: ArenaLeaderboard | null;
 }) {
-  const [data, setData] = useState<ArenaLeaderboard | null>(null);
-
-  useEffect(() => {
-    const load = async () => {
-      try {
-        setData(await fetchFn());
-      } catch {
-        // ignore
-      }
-    };
-    load();
-    const interval = setInterval(load, 10000);
-    return () => clearInterval(interval);
-  }, [fetchFn]);
 
   if (!data) return null;
 
@@ -628,23 +599,26 @@ function LeaderboardCard({
   );
 }
 
-function SplitLeaderboards() {
-  const fetchUsers = useCallback(() => api.getUserLeaderboard(), []);
-  const fetchAgents = useCallback(() => api.getAgentLeaderboard(), []);
-
+function SplitLeaderboards({
+  userData,
+  agentData,
+}: {
+  userData: ArenaLeaderboard | null;
+  agentData: ArenaLeaderboard | null;
+}) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       <LeaderboardCard
         title="Human Scoreboard"
         icon={<span className="text-sm">👤</span>}
         accentColor="yellow"
-        fetchFn={fetchUsers}
+        data={userData}
       />
       <LeaderboardCard
         title="Agent Scoreboard"
         icon={<span className="text-sm">🤖</span>}
         accentColor="cyan"
-        fetchFn={fetchAgents}
+        data={agentData}
       />
     </div>
   );
@@ -656,6 +630,8 @@ export default function BattlePage() {
   const [rounds, setRounds] = useState<BattleRound[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedRoundId, setSelectedRoundId] = useState<string | null>(null);
+  const [userData, setUserData] = useState<ArenaLeaderboard | null>(null);
+  const [agentData, setAgentData] = useState<ArenaLeaderboard | null>(null);
 
   const fetchData = useCallback(async () => {
     try {
@@ -668,13 +644,32 @@ export default function BattlePage() {
     }
   }, []);
 
+  const fetchLeaderboards = useCallback(async () => {
+    try {
+      const [u, a] = await Promise.all([
+        api.getUserLeaderboard(),
+        api.getAgentLeaderboard(),
+      ]);
+      setUserData(u);
+      setAgentData(a);
+    } catch {
+      // Silently retry on next poll
+    }
+  }, []);
+
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 3000);
+    const interval = setInterval(fetchData, 10000);
     return () => clearInterval(interval);
   }, [fetchData]);
 
-  const sortedRounds = [...rounds].reverse();
+  useEffect(() => {
+    fetchLeaderboards();
+    const interval = setInterval(fetchLeaderboards, 30000);
+    return () => clearInterval(interval);
+  }, [fetchLeaderboards]);
+
+  const sortedRounds = useMemo(() => [...rounds].reverse(), [rounds]);
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
@@ -693,7 +688,7 @@ export default function BattlePage() {
         <div className="pointer-events-none absolute -left-20 -top-20 h-64 w-64 rounded-full bg-yellow-500/5 blur-3xl" />
         <div className="pointer-events-none absolute -right-20 -bottom-20 h-64 w-64 rounded-full bg-cyan-500/5 blur-3xl" />
         <div className="relative z-10">
-          <BestModelHero />
+          <BestModelHero userData={userData} agentData={agentData} />
         </div>
       </div>
 
@@ -701,7 +696,7 @@ export default function BattlePage() {
       <JoinBattle />
 
       {/* Split leaderboards */}
-      <SplitLeaderboards />
+      <SplitLeaderboards userData={userData} agentData={agentData} />
 
       {/* Feed header */}
       <div className="flex items-center gap-2">

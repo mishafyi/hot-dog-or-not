@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 import os
 import time
@@ -31,6 +30,7 @@ audit_log.addHandler(_audit_handler)
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 VOTE_SIGNING_KEY = os.getenv("VOTE_SIGNING_KEY", secrets.token_hex(32))
 from models import BattleRound, BattleVote
+from services.battle_data import invalidate_cache, load_rounds, load_votes, model_display
 from services.openrouter_client import OpenRouterClient
 from services.rate_limiter import global_rate_limiter
 from services.response_parser import parse_response
@@ -54,16 +54,6 @@ _token_requests: dict[str, list[float]] = defaultdict(list)
 # Keyed by Telegram user_id, expires after 120s.
 _recent_tg_context: dict[int, dict] = {}  # {user_id: {chat_id, sender, ts}}
 
-# Model display names
-MODEL_DISPLAY_NAMES: dict[str, str] = {
-    "nvidia/nemotron-nano-12b-v2-vl:free": "Nemotron 12B",
-    "google/gemini-2.5-flash": "Gemini 2.5 Flash",
-    "google/gemini-2.5-flash-preview": "Gemini 2.5 Flash",
-    "anthropic/claude-haiku-4-5-20251001": "Claude Haiku 4.5",
-    "anthropic/claude-opus-4-6": "Claude Opus 4.6",
-}
-
-
 async def _tg_api(method: str, data: dict) -> dict | None:
     """Call a Telegram Bot API method."""
     if not TELEGRAM_BOT_TOKEN:
@@ -80,28 +70,9 @@ async def _tg_api(method: str, data: dict) -> dict | None:
         return None
 
 
-def _model_display(model_id: str) -> str:
-    if model_id in MODEL_DISPLAY_NAMES:
-        return MODEL_DISPLAY_NAMES[model_id]
-    # Strip provider prefix and :free suffix
-    name = model_id.split("/")[-1].removesuffix(":free")
-    return name.replace("-", " ").title()
-
-
 def _sign_vote(round_id: str, voter_id: str, voted_for: str, first_side: str) -> str:
     msg = f"{round_id}:{voter_id}:{voted_for}:{first_side}"
     return hmac.new(VOTE_SIGNING_KEY.encode(), msg.encode(), hashlib.sha256).hexdigest()[:16]
-
-
-def _load_votes() -> list[BattleVote]:
-    if not VOTES_FILE.exists():
-        return []
-    votes: list[BattleVote] = []
-    for line in VOTES_FILE.read_text().splitlines():
-        line = line.strip()
-        if line:
-            votes.append(BattleVote(**json.loads(line)))
-    return votes
 
 
 def _verify_token(authorization: str | None) -> str:
@@ -165,17 +136,6 @@ async def _optimize_image_background(image_path: Path) -> None:
     """Run image optimization in a background thread."""
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(None, _generate_optimized_images, image_path)
-
-
-def _load_rounds() -> list[BattleRound]:
-    if not BATTLE_FILE.exists():
-        return []
-    rounds: list[BattleRound] = []
-    for line in BATTLE_FILE.read_text().splitlines():
-        line = line.strip()
-        if line:
-            rounds.append(BattleRound(**json.loads(line)))
-    return rounds
 
 
 def _determine_winner(
@@ -269,6 +229,7 @@ async def submit_round(
     BATTLE_FILE.parent.mkdir(parents=True, exist_ok=True)
     with open(BATTLE_FILE, "a") as f:
         f.write(battle_round.model_dump_json() + "\n")
+    invalidate_cache()
 
     # Randomly assign sides for blind voting
     import random
@@ -338,8 +299,8 @@ async def submit_round(
 
 @router.get("/feed")
 async def get_feed(last: int = 0):
-    rounds = _load_rounds()
-    votes = _load_votes()
+    rounds = load_rounds()
+    votes = load_votes()
 
     # Index votes by round_id
     round_votes: dict[str, list[BattleVote]] = defaultdict(list)
@@ -389,8 +350,8 @@ async def get_feed(last: int = 0):
 
 @router.get("/stats")
 async def get_stats():
-    rounds = _load_rounds()
-    votes = _load_votes()
+    rounds = load_rounds()
+    votes = load_votes()
 
     # Index votes by round_id
     round_votes: dict[str, list[BattleVote]] = defaultdict(list)
@@ -439,17 +400,20 @@ async def get_stats():
     }
 
 
+_IMAGE_CACHE_HEADERS = {"Cache-Control": "public, max-age=31536000, immutable"}
+
+
 @router.get("/images/thumb/{filename}")
 async def get_thumb(filename: str):
     safe = Path(filename).name
     thumb_path = THUMB_DIR / safe
     if thumb_path.exists():
-        return FileResponse(thumb_path)
+        return FileResponse(thumb_path, headers=_IMAGE_CACHE_HEADERS)
     # Fall back to original if thumbnail hasn't been generated yet
     original = BATTLE_IMAGES_DIR / safe
     if not original.exists():
         raise HTTPException(404, "Image not found")
-    return FileResponse(original)
+    return FileResponse(original, headers=_IMAGE_CACHE_HEADERS)
 
 
 @router.get("/images/{filename}")
@@ -459,7 +423,7 @@ async def get_image(filename: str):
     path = BATTLE_IMAGES_DIR / safe
     if not path.exists():
         raise HTTPException(404, "Image not found")
-    return FileResponse(path)
+    return FileResponse(path, headers=_IMAGE_CACHE_HEADERS)
 
 
 # ── Voting endpoints ──────────────────────────────────────────
@@ -490,13 +454,13 @@ async def submit_vote(
         raise HTTPException(400, "first_side must be nemotron or openclaw")
 
     # Look up the round to get actual model names
-    rounds = _load_rounds()
+    rounds = load_rounds()
     round_ = next((r for r in rounds if r.round_id == round_id), None)
     if not round_:
         raise HTTPException(404, "Round not found")
 
     # Check for duplicate vote
-    votes = _load_votes()
+    votes = load_votes()
     already_voted = any(v.round_id == round_id and v.voter_id == voter_id for v in votes)
     if already_voted:
         raise HTTPException(409, "Already voted on this round")
@@ -534,12 +498,13 @@ async def submit_vote(
     VOTES_FILE.parent.mkdir(parents=True, exist_ok=True)
     with open(VOTES_FILE, "a") as f:
         f.write(vote.model_dump_json() + "\n")
+    invalidate_cache()
 
     return {
         "status": "ok",
         "reveal": True,
-        "first_model": _model_display(model_a),
-        "second_model": _model_display(model_b),
+        "first_model": model_display(model_a),
+        "second_model": model_display(model_b),
     }
 
 
@@ -561,13 +526,13 @@ async def vote_telegram(
     if first_side not in ("nemotron", "openclaw"):
         return HTMLResponse("<h1>Invalid vote</h1>", status_code=400)
 
-    rounds = _load_rounds()
+    rounds = load_rounds()
     round_ = next((r for r in rounds if r.round_id == round_id), None)
     if not round_:
         return HTMLResponse("<h1>Round not found</h1>", status_code=404)
 
     # Check for duplicate vote
-    votes = _load_votes()
+    votes = load_votes()
     already_voted = any(v.round_id == round_id and v.voter_id == voter_id for v in votes)
     if already_voted:
         return HTMLResponse(
@@ -609,14 +574,15 @@ async def vote_telegram(
     VOTES_FILE.parent.mkdir(parents=True, exist_ok=True)
     with open(VOTES_FILE, "a") as f:
         f.write(vote.model_dump_json() + "\n")
+    invalidate_cache()
 
     # Send reveal message to Telegram
     if TELEGRAM_BOT_TOKEN:
         try:
             reveal = (
                 f"🎭 Reveal:\n"
-                f"• Model A was {_model_display(model_a)}\n"
-                f"• Model B was {_model_display(model_b)}\n\n"
+                f"• Model A was {model_display(model_a)}\n"
+                f"• Model B was {model_display(model_b)}\n\n"
                 f"🏆 Scoreboard: https://hotdogornot.xyz/battle"
             )
             async with httpx.AsyncClient() as http:
@@ -630,8 +596,8 @@ async def vote_telegram(
     return HTMLResponse(
         "<html><body style='font-family:system-ui;text-align:center;padding:60px'>"
         f"<h1>Vote recorded!</h1>"
-        f"<p>Model A was <b>{_model_display(model_a)}</b></p>"
-        f"<p>Model B was <b>{_model_display(model_b)}</b></p>"
+        f"<p>Model A was <b>{model_display(model_a)}</b></p>"
+        f"<p>Model B was <b>{model_display(model_b)}</b></p>"
         f"<a href='https://hotdogornot.xyz/battle'>View rankings</a>"
         "</body></html>"
     )
@@ -642,7 +608,7 @@ EXCLUDED_MODELS = {"openclaw", "unknown"}
 
 @router.get("/leaderboard")
 async def get_leaderboard():
-    votes = [v for v in _load_votes() if v.model_a not in EXCLUDED_MODELS and v.model_b not in EXCLUDED_MODELS]
+    votes = [v for v in load_votes() if v.model_a not in EXCLUDED_MODELS and v.model_b not in EXCLUDED_MODELS]
     total = len(votes)
     min_votes = 2
 
@@ -687,7 +653,7 @@ async def get_leaderboard():
             ci_hi = float(result["rating_upper"][i])
             models.append({
                 "model": comp,
-                "display": _model_display(comp),
+                "display": model_display(comp),
                 "rating": round(rating),
                 "ci": [round(ci_lo), round(ci_hi)],
                 "votes": vote_counts.get(comp, 0),
@@ -721,7 +687,7 @@ async def get_leaderboard():
             rating = round(1500 + (win_rate - 0.5) * 400)
             models.append({
                 "model": model_id,
-                "display": _model_display(model_id),
+                "display": model_display(model_id),
                 "rating": rating,
                 "ci": [rating - 50, rating + 50],
                 "votes": total_m,
@@ -825,7 +791,7 @@ async def _handle_vote_callback(cb: dict):
     _, round_id, voted_for, first_side = parts
 
     try:
-        rounds = _load_rounds()
+        rounds = load_rounds()
         round_ = next((r for r in rounds if r.round_id == round_id), None)
         if not round_:
             await _tg_api("answerCallbackQuery", {
@@ -834,7 +800,7 @@ async def _handle_vote_callback(cb: dict):
             return
 
         # Check duplicate
-        votes = _load_votes()
+        votes = load_votes()
         if any(v.round_id == round_id and v.voter_id == sender_id for v in votes):
             await _tg_api("answerCallbackQuery", {
                 "callback_query_id": query_id,
@@ -880,6 +846,7 @@ async def _handle_vote_callback(cb: dict):
         VOTES_FILE.parent.mkdir(parents=True, exist_ok=True)
         with open(VOTES_FILE, "a") as f:
             f.write(vote.model_dump_json() + "\n")
+        invalidate_cache()
 
         # Answer callback (dismiss spinner)
         await _tg_api("answerCallbackQuery", {"callback_query_id": query_id})
@@ -888,8 +855,8 @@ async def _handle_vote_callback(cb: dict):
         reveal = (
             f"🗳️ Verdict recorded!\n\n"
             f"🎭 Reveal:\n"
-            f"• Model A was *{_model_display(model_a)}*\n"
-            f"• Model B was *{_model_display(model_b)}*\n\n"
+            f"• Model A was *{model_display(model_a)}*\n"
+            f"• Model B was *{model_display(model_b)}*\n\n"
             f"🏆 [Scoreboard](https://hotdogornot.xyz/battle)"
         )
         if chat_id and message_id:
