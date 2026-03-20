@@ -25,7 +25,7 @@ import {
 } from "@/components/uilayouts/linear-modal";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { fmtLatency } from "@/lib/format";
+import { fmtLatency, encodeModelSlug } from "@/lib/format";
 import { ModelLogo } from "@/components/model-logo";
 import type {
   Metrics,
@@ -210,7 +210,7 @@ function ResultsDashboard() {
                       {i === 0 && <Trophy className="size-5 text-amber-400 shrink-0" />}
                       <ModelLogo modelId={s.model_id} size={56} />
                       <Link
-                        href={`/results/${encodeURIComponent(s.model_id)}`}
+                        href={`/results/${encodeModelSlug(s.model_id)}`}
                         className="text-base font-bold hover:underline transition-colors truncate text-foreground"
                       >
                         {s.model_name}

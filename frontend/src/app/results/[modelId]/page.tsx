@@ -11,12 +11,12 @@ import { Flame, Ban } from "lucide-react";
 import Link from "next/link";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { fmtLatency } from "@/lib/format";
+import { fmtLatency, decodeModelSlug } from "@/lib/format";
 import { ModelLogo } from "@/components/model-logo";
 
 export default function ModelDetailPage() {
   const params = useParams();
-  const modelId = decodeURIComponent(params.modelId as string);
+  const modelId = decodeModelSlug(params.modelId as string);
   const { data: detail, loading, error } = useModelDetail(modelId);
   const [activeTab, setActiveTab] = useState("all");
   const filter = activeTab === "all" ? undefined : activeTab;
