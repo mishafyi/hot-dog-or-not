@@ -163,10 +163,20 @@ async def start_run(
     ]
     queue_path.write_text(json.dumps(queue_data))
 
-    # Launch background task
-    asyncio.create_task(_run_benchmark(run_id, model_id, images, api_key))
+    # When called standalone (not from batch), launch background task immediately
+    if batch_id is None:
+        asyncio.create_task(_run_benchmark(run_id, model_id, images, api_key))
 
     return run_id
+
+
+async def _run_batch_sequential(
+    batch_id: str,
+    run_configs: list[tuple[str, str, list[dict], str | None]],
+):
+    """Run models one at a time, each processing all its images before the next starts."""
+    for run_id, model_id, images, api_key in run_configs:
+        await _run_benchmark(run_id, model_id, images, api_key)
 
 
 async def start_batch_run(
@@ -174,7 +184,7 @@ async def start_batch_run(
     api_key: str | None = None,
     model_ids: list[str] | None = None,
 ) -> tuple[str, dict[str, str]]:
-    """Start selected models on the same images simultaneously.
+    """Start selected models on the same images, running one model at a time.
 
     Returns (batch_id, {model_id: run_id}).
     """
@@ -195,6 +205,7 @@ async def start_batch_run(
     else:
         selected = MODELS
 
+    run_configs: list[tuple[str, str, list[dict], str | None]] = []
     run_ids: dict[str, str] = {}
     for model in selected:
         run_id = await start_run(
@@ -205,8 +216,13 @@ async def start_batch_run(
             batch_id=batch_id,
         )
         run_ids[model["id"]] = run_id
+        run_configs.append((run_id, model["id"], images, api_key))
 
     _active_batches[batch_id] = run_ids
+
+    # Run all models sequentially in a single background task
+    asyncio.create_task(_run_batch_sequential(batch_id, run_configs))
+
     return batch_id, run_ids
 
 
