@@ -170,13 +170,121 @@ async def start_run(
     return run_id
 
 
-async def _run_batch_sequential(
+async def _run_batch_round_robin(
     batch_id: str,
     run_configs: list[tuple[str, str, list[dict], str | None]],
 ):
-    """Run models one at a time, each processing all its images before the next starts."""
+    """Round-robin: image 1 on model A, image 1 on model B, ..., image 2 on model A, etc.
+
+    Spreads requests across providers to avoid hitting per-provider rate limits.
+    """
+    # Set up per-model state
+    clients: dict[str, OpenRouterClient] = {}
+    metas: dict[str, RunMeta] = {}
+    jsonl_paths: dict[str, Path] = {}
+    processed_keys: dict[str, set[str]] = {}
+
     for run_id, model_id, images, api_key in run_configs:
-        await _run_benchmark(run_id, model_id, images, api_key)
+        meta = _active_runs[run_id]
+        meta.status = RunStatus.running
+        _save_meta(meta)
+        metas[run_id] = meta
+        clients[run_id] = OpenRouterClient(api_key)
+        jsonl_paths[run_id] = Path(settings.results_dir) / f"{run_id}.jsonl"
+        processed_keys[run_id] = set()
+        if jsonl_paths[run_id].exists():
+            for line in jsonl_paths[run_id].read_text().strip().split("\n"):
+                if line:
+                    p = Prediction.model_validate_json(line)
+                    processed_keys[run_id].add(p.image_path)
+
+    # All configs share the same images list
+    images = run_configs[0][2]
+
+    try:
+        for img in images:
+            key = f"{img['split']}/{img['category']}/{img['filename']}"
+
+            for run_id, model_id, _, api_key in run_configs:
+                meta = metas[run_id]
+                if _cancel_flags.get(run_id, False):
+                    meta.status = RunStatus.cancelled
+                    _save_meta(meta)
+                    continue
+                if meta.status != RunStatus.running:
+                    continue
+                if key in processed_keys[run_id]:
+                    meta.processed += 1
+                    continue
+
+                await global_rate_limiter.acquire()
+                try:
+                    raw_response, reasoning, latency_ms = await clients[run_id].classify_image(
+                        model_id, img["path"]
+                    )
+                    parsed = parse_response(raw_response)
+                    if not reasoning and raw_response:
+                        lines = raw_response.strip().split("\n")
+                        if len(lines) > 1:
+                            last = lines[-1].strip().lower()
+                            if last in ("yes", "no", "yes.", "no."):
+                                reasoning = "\n".join(lines[:-1]).strip()
+                            else:
+                                reasoning = raw_response.strip()
+                    is_correct = (
+                        parsed == "yes" and img["category"] == "hot_dog"
+                    ) or (parsed == "no" and img["category"] == "not_hot_dog")
+
+                    prediction = Prediction(
+                        image_path=key,
+                        split=img["split"],
+                        category=img["category"],
+                        filename=img["filename"],
+                        raw_response=raw_response,
+                        reasoning=reasoning,
+                        parsed=parsed,
+                        correct=is_correct,
+                        latency_ms=round(latency_ms, 1),
+                    )
+                except Exception as e:
+                    prediction = Prediction(
+                        image_path=key,
+                        split=img["split"],
+                        category=img["category"],
+                        filename=img["filename"],
+                        raw_response=str(e),
+                        parsed="error",
+                        correct=False,
+                        latency_ms=0,
+                    )
+
+                with open(jsonl_paths[run_id], "a") as f:
+                    f.write(prediction.model_dump_json() + "\n")
+                meta.processed += 1
+                if prediction.correct:
+                    meta.correct += 1
+                if prediction.parsed == "error":
+                    meta.errors += 1
+                _save_meta(meta)
+
+        # Mark completed
+        for run_id, _, _, _ in run_configs:
+            meta = metas[run_id]
+            if meta.status == RunStatus.running:
+                meta.status = RunStatus.completed
+                meta.completed_at = datetime.now(timezone.utc).isoformat()
+            _save_meta(meta)
+
+    except Exception:
+        for run_id, _, _, _ in run_configs:
+            meta = metas[run_id]
+            if meta.status == RunStatus.running:
+                meta.status = RunStatus.failed
+            _save_meta(meta)
+
+    finally:
+        for run_id in clients:
+            await clients[run_id].close()
 
 
 async def start_batch_run(
@@ -220,8 +328,8 @@ async def start_batch_run(
 
     _active_batches[batch_id] = run_ids
 
-    # Run all models sequentially in a single background task
-    asyncio.create_task(_run_batch_sequential(batch_id, run_configs))
+    # Run models in round-robin order (1 image per model, then next image)
+    asyncio.create_task(_run_batch_round_robin(batch_id, run_configs))
 
     return batch_id, run_ids
 
