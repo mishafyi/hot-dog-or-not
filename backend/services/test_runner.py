@@ -202,15 +202,23 @@ async def _run_batch_round_robin(
     images = run_configs[0][2]
 
     try:
+        cancelled = False
         for img in images:
+            if cancelled:
+                break
             key = f"{img['split']}/{img['category']}/{img['filename']}"
 
             for run_id, model_id, _, api_key in run_configs:
+                # Check if ANY model in the batch was cancelled → stop entire batch
+                if any(_cancel_flags.get(rid, False) for rid, _, _, _ in run_configs):
+                    cancelled = True
+                    for rid, _, _, _ in run_configs:
+                        m = metas[rid]
+                        if m.status == RunStatus.running:
+                            m.status = RunStatus.cancelled
+                            _save_meta(m)
+                    break
                 meta = metas[run_id]
-                if _cancel_flags.get(run_id, False):
-                    meta.status = RunStatus.cancelled
-                    _save_meta(meta)
-                    continue
                 if meta.status != RunStatus.running:
                     continue
                 if key in processed_keys[run_id]:

@@ -4,7 +4,7 @@ import asyncio
 import time
 
 
-MAX_CALLS_PER_MINUTE = 20
+MAX_CALLS_PER_MINUTE = 15  # OpenRouter free tier is 20/min; leave headroom for retries
 
 
 class GlobalRateLimiter:
