@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -13,6 +14,7 @@ from services.openrouter_client import OpenRouterClient
 from services.response_parser import parse_response
 from services.rate_limiter import global_rate_limiter
 
+logger = logging.getLogger(__name__)
 
 # In-memory run tracking
 _active_runs: dict[str, RunMeta] = {}
@@ -302,6 +304,85 @@ async def _run_benchmark(
                 meta.errors += 1
 
             _save_meta(meta)
+
+        # ── Retry pass: re-attempt error predictions with longer backoff ──
+        if meta.status == RunStatus.running and meta.errors > 0:
+            error_predictions = []
+            all_lines = jsonl_path.read_text().strip().split("\n")
+            for line in all_lines:
+                if not line:
+                    continue
+                p = Prediction.model_validate_json(line)
+                if p.parsed == "error":
+                    error_predictions.append(p)
+
+            if error_predictions:
+                logger.info(
+                    "Retrying %d failed predictions for %s",
+                    len(error_predictions), model_id,
+                )
+                await asyncio.sleep(15)  # cool-down before retry pass
+
+                retried = 0
+                for ep in error_predictions:
+                    if _cancel_flags.get(run_id, False):
+                        break
+
+                    img_info = next(
+                        (i for i in images
+                         if f"{i['split']}/{i['category']}/{i['filename']}" == ep.image_path),
+                        None,
+                    )
+                    if not img_info:
+                        continue
+
+                    await global_rate_limiter.acquire()
+                    try:
+                        raw_response, reasoning, latency_ms = await client.classify_image(
+                            model_id, img_info["path"]
+                        )
+                        parsed = parse_response(raw_response)
+                        if not reasoning and raw_response:
+                            lines_r = raw_response.strip().split("\n")
+                            if len(lines_r) > 1:
+                                last = lines_r[-1].strip().lower()
+                                if last in ("yes", "no", "yes.", "no."):
+                                    reasoning = "\n".join(lines_r[:-1]).strip()
+                                else:
+                                    reasoning = raw_response.strip()
+                        is_correct = (
+                            parsed == "yes" and img_info["category"] == "hot_dog"
+                        ) or (parsed == "no" and img_info["category"] == "not_hot_dog")
+
+                        retry_pred = Prediction(
+                            image_path=ep.image_path,
+                            split=img_info["split"],
+                            category=img_info["category"],
+                            filename=img_info["filename"],
+                            raw_response=raw_response,
+                            reasoning=reasoning,
+                            parsed=parsed,
+                            correct=is_correct,
+                            latency_ms=round(latency_ms, 1),
+                        )
+                        # Replace error line in JSONL
+                        old_line = ep.model_dump_json()
+                        new_line = retry_pred.model_dump_json()
+                        content = jsonl_path.read_text()
+                        content = content.replace(old_line, new_line, 1)
+                        jsonl_path.write_text(content)
+
+                        if is_correct:
+                            meta.correct += 1
+                        if parsed != "error":
+                            meta.errors -= 1
+                        retried += 1
+                    except Exception:
+                        pass  # keep original error prediction
+
+                if retried > 0:
+                    logger.info("Retry pass fixed %d/%d errors", retried, len(error_predictions))
+                _save_meta(meta)
 
         if meta.status == RunStatus.running:
             meta.status = RunStatus.completed
